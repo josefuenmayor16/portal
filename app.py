@@ -11,7 +11,7 @@ app = Flask(__name__)
 # Railway leerá los textos planos configurados en tu panel de variables
 OMADA_API_URL = os.environ.get("OMADA_API_URL", "https://use1-omada-cloud.tplinkcloud.com/api/v1")
 OMADA_USER = os.environ.get("OMADA_USER", "lcastillo@cobeca.com")
-OMADA_PASSWORD = os.environ.get("OMADA_PASSWORD")
+OMADA_PASSWORD = os.environ.get("OMADA_PASSWORD","Fu5@2026*.")
 OMADA_SITE_NAME = os.environ.get("OMADA_SITE_NAME", "SAAS TROPICAL")
 
 def get_db_connection():

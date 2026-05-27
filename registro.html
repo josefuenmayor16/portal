@@ -161,11 +161,20 @@
     </div>
 
     <script>
-        // Este script lee los parámetros de la URL automáticamente al cargar la página
+        // Captura tolerante a mayúsculas/minúsculas para evitar valores vacíos en Omada
         const urlParams = new URLSearchParams(window.location.search);
-        document.getElementById('clientMac').value = urlParams.get('clientMac') || '';
-        document.getElementById('apMac').value = urlParams.get('apMac') || '';
-        document.getElementById('target').value = urlParams.get('target') || '';
+        
+        // Intenta obtener clientMac o clientmac, el que venga en la URL
+        const clientMacValue = urlParams.get('clientMac') || urlParams.get('clientmac') || '';
+        const apMacValue = urlParams.get('apMac') || urlParams.get('apmac') || '';
+        const targetValue = urlParams.get('target') || urlParams.get('target') || '';
+
+        document.getElementById('clientMac').value = clientMacValue;
+        document.getElementById('apMac').value = apMacValue;
+        document.getElementById('target').value = targetValue;
+
+        // Imprime en la consola del navegador del teléfono para auditoría visual básica
+        console.log("MAC del cliente capturada con éxito:", clientMacValue);
     </script>
 </body>
 </html>
