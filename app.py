@@ -6,11 +6,12 @@ app = Flask(__name__)
 
 def get_db_connection():
     try:
+        password = os.environ.get('DB_PASSWORD') or os.environ.get('MYSQLROOT_PASSWORD') or os.environ.get('MYSQLPASSWORD')
         conn = pymysql.connect(
-            host=os.environ.get('DB_HOST'),
-            user=os.environ.get('DB_USER'),
-            password=os.environ.get('DB_PASSWORD'),
-            database=os.environ.get('DB_NAME'),
+            host=os.environ.get('DB_HOST', 'mysql.railway.internal'),
+            user=os.environ.get('DB_USER', 'root'),
+            password=password,
+            database=os.environ.get('DB_NAME', 'railway'),
             port=3306,
             autocommit=True  # Guarda los cambios de forma inmediata
         )
