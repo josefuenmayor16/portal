@@ -40,9 +40,12 @@ def autorizar_en_omada_cloud(client_mac):
         return False
         
     try:
-        # 1. Iniciar sesión en la API de Omada Cloud para obtener el Token
+        # 🎯 Extraemos la base limpia (ej: https://use1-omada-cloud.tplinkcloud.com) para el login global
+        # Esto previene errores de formato al evitar que el endpoint final lleve el sufijo /v1
+        base_url = OMADA_API_URL.split('/api')[0]
+        login_url = f"{base_url}/api/login"
+        
         print(f"Iniciando sesión en Omada Cloud para el usuario: {OMADA_USER}...")
-        login_url = f"{OMADA_API_URL}/login"
         login_payload = {
             "username": OMADA_USER,
             "password": OMADA_PASSWORD
@@ -50,18 +53,32 @@ def autorizar_en_omada_cloud(client_mac):
         
         session = requests.Session()
         login_response = session.post(login_url, json=login_payload, timeout=7)
-        login_data = login_response.json()
         
-        if login_response.status_code != 200 or not login_data.get("result"):
-            print(f"Error de autenticación en Omada Cloud: {login_data}")
+        # Verificación de seguridad antes de procesar el JSON para evitar excepciones
+        if login_response.status_code != 200:
+            print(f"Error HTTP en Login ({login_response.status_code}): {login_response.text}")
+            return False
+            
+        login_data = login_response.json()
+        if not login_data.get("result"):
+            print(f"Error de credenciales en Omada Cloud: {login_data}")
             return False
             
         token = login_data["result"]["token"]
+        print("Sesión iniciada con éxito. Token obtenido.")
         
-        # 2. Obtener el Site ID usando el nombre "SAAS TROPICAL"
-        sites_url = f"{OMADA_API_URL}/sites"
+        # Aseguramos el prefijo correcto de la API v1 para los endpoints de consulta y comandos
+        api_v1_url = f"{base_url}/api/v1"
+        
+        # 2. Obtener el Site ID usando el nombre del sitio
+        sites_url = f"{api_v1_url}/sites"
         headers = {"Authorization": f"Bearer {token}"}
         sites_response = session.get(sites_url, headers=headers, timeout=7)
+        
+        if sites_response.status_code != 200:
+            print(f"Error HTTP al consultar sitios ({sites_response.status_code})")
+            return False
+            
         sites_data = sites_response.json()
         
         site_id = None
@@ -75,7 +92,7 @@ def autorizar_en_omada_cloud(client_mac):
             return False
 
         # 3. Autorizar la MAC del usuario para otorgarle Internet
-        auth_url = f"{OMADA_API_URL}/sites/{site_id}/cmd/authorizations"
+        auth_url = f"{api_v1_url}/sites/{site_id}/cmd/authorizations"
         auth_payload = {
             "mac": client_mac,
             "action": 1,          # 1 = Conectar / Autorizar
@@ -83,9 +100,13 @@ def autorizar_en_omada_cloud(client_mac):
         }
         
         auth_response = session.post(auth_url, json=auth_payload, headers=headers, timeout=7)
-        auth_result = auth_response.json()
         
-        if auth_response.status_code == 200 and auth_result.get("errorCode") == 0:
+        if auth_response.status_code != 200:
+            print(f"Error HTTP en autorización ({auth_response.status_code}): {auth_response.text}")
+            return False
+            
+        auth_result = auth_response.json()
+        if auth_result.get("errorCode") == 0:
             print(f"¡ÉXITO! Dispositivo {client_mac} autorizado correctamente en Omada Cloud.")
             return True
         else:
@@ -159,8 +180,6 @@ def registrar_usuario():
             print("Advertencia: No se recibió clientMac del formulario, no se puede liberar internet automáticamente.")
         
         # 5. REDIRECCIÓN EXITOSA DINÁMICA
-        # Si Omada envió una URL de destino ('target'), lo mandamos allí para cerrar el flujo.
-        # De lo contrario, lo enviamos a Google de forma predeterminada.
         if target and target.strip():
             print(f"Redireccionando usuario al destino original: {target}")
             return redirect(target)
