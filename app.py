@@ -12,11 +12,11 @@ def get_db_connection():
             password=os.environ.get('DB_PASSWORD'),
             database=os.environ.get('DB_NAME'),
             port=3306,
-            autocommit=True # Guarda los cambios automáticamente
+            autocommit=True  # Guarda los cambios de forma inmediata
         )
         return conn
     except Exception as e:
-        print(f"Error conectando a la base de datos interna: {e}")
+        print(f"Error conectando a MySQL interno: {e}")
         return None
 
 @app.route('/')
