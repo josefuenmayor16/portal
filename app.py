@@ -8,7 +8,8 @@ app = Flask(__name__)
 # ==========================================
 # CONFIGURACIÓN DE OMADA CLOUD (PRODUCCIÓN)
 # ==========================================
-OMADA_API_URL = "https://use1-omada-cloud.tplinkcloud.com/api/v1"
+# Railway leerá los textos planos configurados en tu panel de variables
+OMADA_API_URL = os.environ.get("OMADA_API_URL", "https://use1-omada-cloud.tplinkcloud.com/api/v1")
 OMADA_USER = os.environ.get("OMADA_USER", "lcastillo@cobeca.com")
 OMADA_PASSWORD = os.environ.get("OMADA_PASSWORD")
 OMADA_SITE_NAME = os.environ.get("OMADA_SITE_NAME", "SAAS TROPICAL")
@@ -22,7 +23,9 @@ def get_db_connection():
             password=password,
             database=os.environ.get('DB_NAME', 'railway'),
             port=3306,
-            autocommit=True
+            autocommit=True,
+            # 🔑 Solución al Error 500: Obliga a usar el método compatible con cryptography
+            auth_plugin='caching_sha256_password'
         )
         return conn
     except Exception as e:
@@ -153,8 +156,6 @@ def registrar_usuario():
             print("Advertencia: No se recibió clientMac del formulario, no se puede liberar internet automáticamente.")
         
         # 5. REDIRECCIÓN EXITOSA
-        # Mandamos al usuario directo a Google (o a tu web/Instagram). Al haber sido autorizado 
-        # por detrás, la página cargará de inmediato porque ya tiene internet activo.
         return redirect("https://www.google.com")
         
     except Exception as e:
