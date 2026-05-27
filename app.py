@@ -11,16 +11,15 @@ app = Flask(__name__)
 # Railway leerá los textos planos configurados en tu panel de variables
 OMADA_API_URL = os.environ.get("OMADA_API_URL", "https://use1-omada-cloud.tplinkcloud.com/api/v1")
 OMADA_USER = os.environ.get("OMADA_USER", "lcastillo@cobeca.com")
-OMADA_PASSWORD = os.environ.get("OMADA_PASSWORD","Fu5@2026*.")
+OMADA_PASSWORD = os.environ.get("OMADA_PASSWORD", "Fu5@2026*.")
 OMADA_SITE_NAME = os.environ.get("OMADA_SITE_NAME", "SAAS TROPICAL")
 
 def get_db_connection():
     try:
         password = os.environ.get('DB_PASSWORD')
-        
-        # Configuramos los plugins de autenticación aceptados de forma explícita
-        from pymysql.protocol import MysqlPacket
-        
+        if password:
+            password = password.strip()  # Elimina espacios accidentales
+            
         conn = pymysql.connect(
             host=os.environ.get('DB_HOST', 'mysql.railway.internal'),
             user=os.environ.get('DB_USER', 'root'),
@@ -28,7 +27,6 @@ def get_db_connection():
             database=os.environ.get('DB_NAME', 'railway'),
             port=3306,
             autocommit=True,
-            # En lugar de auth_plugin, usamos el cliente seguro por defecto
             defer_connect=False
         )
         return conn
@@ -120,6 +118,7 @@ def registrar_usuario():
     direccion = request.form.get('direccion')
     clientMac = request.form.get('clientMac')
     apMac = request.form.get('apMac')
+    target = request.form.get('target')  # 🎯 Capturamos la URL destino original de Omada
     
     print(f"Procesando registro: nombre={nombre} {apellido}, MAC={clientMac}")
 
@@ -159,8 +158,15 @@ def registrar_usuario():
         else:
             print("Advertencia: No se recibió clientMac del formulario, no se puede liberar internet automáticamente.")
         
-        # 5. REDIRECCIÓN EXITOSA
-        return redirect("https://www.google.com")
+        # 5. REDIRECCIÓN EXITOSA DINÁMICA
+        # Si Omada envió una URL de destino ('target'), lo mandamos allí para cerrar el flujo.
+        # De lo contrario, lo enviamos a Google de forma predeterminada.
+        if target and target.strip():
+            print(f"Redireccionando usuario al destino original: {target}")
+            return redirect(target)
+        else:
+            print("No se detectó parámetro target. Redireccionando a Google por defecto.")
+            return redirect("https://www.google.com")
         
     except Exception as e:
         print(f"Error durante el flujo de registro: {e}")
@@ -170,4 +176,6 @@ def registrar_usuario():
 
 if __name__ == '__main__':
     print("Servidor Flask de Producción Iniciado")
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Controlamos el modo debug basándonos en variables de entorno para mayor seguridad
+    modo_debug = os.environ.get("FLASK_DEBUG", "True").lower() in ("true", "1")
+    app.run(host='0.0.0.0', port=5000, debug=modo_debug)
