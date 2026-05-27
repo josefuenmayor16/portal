@@ -1,26 +1,22 @@
+import os
+import pymysql  # <- Cambiado a pymysql para interactuar con MySQL de Railway
 from flask import Flask, request, jsonify, send_from_directory
-import pymssql  # <- Cambiado pypyodbc por pymssql
 
 app = Flask(__name__)
 
-# Configuración de la conexión a SQL Server externa
 def get_db_connection():
-    # NOTA: En Railway debes usar la IP pública o el Hostname de donde esté alojado tu SQL Server
-    # No olvides abrir el puerto 1433 en el firewall de tu servidor de base de datos.
-    server = r'USER\PASANTE' 
-    database = 'portal'
-
-    
     try:
-        # pymssql se conecta directo usando las credenciales SQL
-        conn = pymssql.connect(
-            server=server, 
-            database=database,
-            port=1433 # Puerto por defecto de SQL Server
+        conn = pymysql.connect(
+            host=os.environ.get('DB_HOST'),
+            user=os.environ.get('DB_USER'),
+            password=os.environ.get('DB_PASSWORD'),
+            database=os.environ.get('DB_NAME'),
+            port=3306,
+            autocommit=True # Guarda los cambios automáticamente
         )
         return conn
     except Exception as e:
-        print(f"Error conectando a la base de datos: {e}")
+        print(f"Error conectando a la base de datos interna: {e}")
         return None
 
 @app.route('/')
@@ -59,45 +55,34 @@ def registro():
         cursor = conn.cursor()
         print("Conexión exitosa, insertando datos...")
         
-        # 1. Insertar en la tabla clientes (Cambiado '?' por '%s')
+        # 1. Insertar en la tabla clientes (En MySQL la sintaxis usa %s)
         cursor.execute("""
-            INSERT INTO dbo.clientes (nombre, apellido, telefono, email, direccion)
+            INSERT INTO clientes (nombre, apellido, telefono, email, direccion)
             VALUES (%s, %s, %s, %s, %s)
         """, (nombre, apellido, telefono, email, direccion))
-        print("Datos insertados en tabla clientes")
         
-        # 2. Obtener el ID del usuario insertado
-        # NOTA: SCOPE_IDENTITY() requiere ejecutar un SELECT inmediatamente después del INSERT 
-        # en la misma sesión/cursor.
-        cursor.execute("SELECT SCOPE_IDENTITY() as id_usuario")
-        id_usuario = cursor.fetchone()[0]
-        print(f"ID de usuario generado: {id_usuario}")
+        # 2. Obtener el ID generado (En MySQL usamos cursor.lastrowid en lugar de SCOPE_IDENTITY)
+        id_usuario = cursor.lastrowid
+        print(f"ID de usuario generado en Railway: {id_usuario}")
         
-        # 3. Insertar en la tabla fecha_registro (Cambiado '?' por '%s')
+        # 3. Insertar en la tabla fecha_registro (Cambiado GETDATE() por NOW() que es el nativo de MySQL)
         cursor.execute("""
-            INSERT INTO dbo.fecha_registro (id_usuario_fr, fecha_registro)
-            VALUES (%s, GETDATE())
+            INSERT INTO fecha_registro (id_usuario_fr, fecha_registro)
+            VALUES (%s, NOW())
         """, (id_usuario,))
-        print("Datos insertados en tabla fecha_registro")
-        
-        conn.commit()
-        print("Transacción confirmada (commit)")
         cursor.close()
         conn.close()
         
         return jsonify({
-            'message': 'Usuario registrado exitosamente',
+            'message': 'Usuario registrado exitosamente en la nube',
             'id_usuario': id_usuario
         }), 201
         
     except Exception as e:
-        print(f"Error al registrar usuario: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"Error: {e}")
         if conn:
-            conn.rollback()
             conn.close()
-        return jsonify({'error': f'Error al registrar usuario en la base de datos: {str(e)}'}), 500
+        return jsonify({'error': f'Error en la base de datos: {str(e)}'}), 500
 
 if __name__ == '__main__':
     # Cambiado a puerto 5000 para que machee perfectamente con tu configuración de Omada
