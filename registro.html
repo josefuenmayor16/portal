@@ -152,6 +152,7 @@
             
             <input type="hidden" id="clientMac" name="clientMac">
             <input type="hidden" id="apMac" name="apMac">
+            <input type="hidden" id="target" name="target">
             
             <button type="submit">Registrarse y Conectar</button>
         </form>
@@ -164,6 +165,7 @@
         const urlParams = new URLSearchParams(window.location.search);
         document.getElementById('clientMac').value = urlParams.get('clientMac') || '';
         document.getElementById('apMac').value = urlParams.get('apMac') || '';
+        document.getElementById('target').value = urlParams.get('target') || '';
     </script>
 </body>
 </html>

@@ -4,6 +4,10 @@ from flask import Flask, request, jsonify, send_from_directory, redirect
 
 app = Flask(__name__)
 
+# Configura aquí los datos de tu Omada Cloud
+OMADA_CONTROLLER_URL = "https://use1-omada-cloud.tplinkcloud.com"  # Dominio de la API de la nube
+SITE_ID = "SAAS TROPICAL"   # Nombre del sitio extraído del panel
+
 def get_db_connection():
     try:
         password = os.environ.get('DB_PASSWORD') or os.environ.get('MYSQLROOT_PASSWORD') or os.environ.get('MYSQLPASSWORD')
@@ -123,13 +127,21 @@ def registrar_usuario():
                 
             conn.close()
             
-            # 4. Redirigir al usuario para que Omada le dé internet libre
-            # Si hay clientMac y apMac, redirigir al portal de Omada
-            if clientMac and apMac:
-                # URL de redirección típica de Omada SDN Portal
-                return redirect(f"http://{apMac}/portal/auth?clientMac={clientMac}")
+            # 2. CAPTURAR EL PARÁMETRO DE REDIRECCIÓN DE OMADA
+            # Cuando Omada abre el portal, envía una variable en la URL llamada 'target' 
+            # que contiene la dirección exacta del controlador en la nube para autorizar el dispositivo.
+            target_url = request.args.get('target') or request.form.get('target')
+            
+            if target_url:
+                print(f"Redirigiendo cliente a Omada Cloud para liberar internet: {target_url}")
+                # Al mandar al usuario al target, el navegador del cliente ejecuta la autorización 
+                # directamente contra la nube de TP-Link de manera transparente.
+                return redirect(target_url)
             else:
-                return "¡Registro exitoso! Ya estás conectado al Wi-Fi."
+                # Si por alguna razón el target no vino (ej. pruebas manuales), 
+                # lo mandamos a Google para que no se quede colgado en pantalla blanca.
+                print("No se detectó parámetro target, enviando a Google por defecto.")
+                return redirect("https://www.google.com")
             
         except Exception as e:
             print(f"Error durante el registro en la BD: {e}")
