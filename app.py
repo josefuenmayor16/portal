@@ -17,6 +17,10 @@ OMADA_SITE_NAME = os.environ.get("OMADA_SITE_NAME", "SAAS TROPICAL")
 def get_db_connection():
     try:
         password = os.environ.get('DB_PASSWORD')
+        
+        # Configuramos los plugins de autenticación aceptados de forma explícita
+        from pymysql.protocol import MysqlPacket
+        
         conn = pymysql.connect(
             host=os.environ.get('DB_HOST', 'mysql.railway.internal'),
             user=os.environ.get('DB_USER', 'root'),
@@ -24,8 +28,8 @@ def get_db_connection():
             database=os.environ.get('DB_NAME', 'railway'),
             port=3306,
             autocommit=True,
-            # 🔑 Solución al Error 500: Obliga a usar el método compatible con cryptography
-            auth_plugin='caching_sha256_password'
+            # En lugar de auth_plugin, usamos el cliente seguro por defecto
+            defer_connect=False
         )
         return conn
     except Exception as e:
