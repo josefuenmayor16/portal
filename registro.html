@@ -150,8 +150,8 @@
                 <input type="text" id="direccion" name="direccion" required maxlength="50">
             </div>
             
-            <input type="hidden" name="clientMac" value="{{ request.args.get('clientMac') }}">
-            <input type="hidden" name="apMac" value="{{ request.args.get('apMac') }}">
+            <input type="hidden" id="clientMac" name="clientMac">
+            <input type="hidden" id="apMac" name="apMac">
             
             <button type="submit">Registrarse y Conectar</button>
         </form>
@@ -160,46 +160,10 @@
     </div>
 
     <script>
-        document.getElementById('registroForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const formData = {
-                nombre: document.getElementById('nombre').value,
-                apellido: document.getElementById('apellido').value,
-                telefono: document.getElementById('telefono').value,
-                email: document.getElementById('email').value,
-                direccion: document.getElementById('direccion').value
-            };
-            
-            try {
-                const response = await fetch('http://192.168.130.250:5000/api/registro', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(formData)
-                });
-                
-                const result = await response.json();
-                
-                const messageDiv = document.getElementById('message');
-                messageDiv.style.display = 'block';
-                
-                if (response.ok) {
-                    messageDiv.className = 'message success';
-                    messageDiv.textContent = result.message || '¡Registro exitoso!';
-                    document.getElementById('registroForm').reset();
-                } else {
-                    messageDiv.className = 'message error';
-                    messageDiv.textContent = result.error || 'Error en el registro';
-                }
-            } catch (error) {
-                const messageDiv = document.getElementById('message');
-                messageDiv.style.display = 'block';
-                messageDiv.className = 'message error';
-                messageDiv.textContent = 'Error de conexión con el servidor';
-            }
-        });
+        // Este script lee los parámetros de la URL automáticamente al cargar la página
+        const urlParams = new URLSearchParams(window.location.search);
+        document.getElementById('clientMac').value = urlParams.get('clientMac') || '';
+        document.getElementById('apMac').value = urlParams.get('apMac') || '';
     </script>
 </body>
 </html>
