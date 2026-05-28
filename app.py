@@ -47,60 +47,64 @@ def autorizar_en_omada_cloud(client_mac):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
         })
 
-        # 🎯 APUNTAR AL LOGIN DE OPERADOR GLOBAL DE TP-LINK CLOUD
-        # Para interactuar a través del proxy del conector, nos autenticamos en la raíz de la API Cloud.
-        login_url = "https://use1-api-omada-controller-connector.tplinkcloud.com/api/v1/login"
+        # 🎯 PASO 1: AUTENTICACIÓN DIRECTA EN LA API DE LA PLATAFORMA GLOBAL OMADA CLOUD
+        # Usamos la ruta base limpia del conector global para generar el token unificado
+        global_login_url = "https://use1-api-omada-controller-connector.tplinkcloud.com/api/v1/login"
         
         login_payload = {
-            "name": OMADA_USER,       # Debe ser tu correo de TP-Link ID vinculado al OC300
+            "name": OMADA_USER,       # Tu correo electrónico TP-Link ID
             "password": OMADA_PASSWORD
         }
         
-        print(f"Abriendo túnel de autenticación en la API externa de Omada: {login_url}")
-        login_response = session.post(login_url, json=login_payload, timeout=12)
+        print(f"Solicitando Token Unificado a la Plataforma Global Omada Cloud: {global_login_url}")
+        login_response = session.post(global_login_url, json=login_payload, timeout=12)
         
+        # --- VALIDACIÓN ESTRICTA DE LA RESPUESTA ---
         if login_response.status_code != 200:
-            print(f"Error de handshake en la API Cloud externa ({login_response.status_code}): {login_response.text}")
+            print(f"Error crítico: Fallo de conexión con la API Global de Omada (HTTP {login_response.status_code})")
             return False
 
         res_json = login_response.json()
         token = None
         
-        # Mapeo exhaustivo del token devuelto por el servicio Cloud
+        # Extracción multi-capa del token en el JSON
         if res_json and isinstance(res_json, dict):
             if "result" in res_json and isinstance(res_json["result"], dict):
                 token = res_json["result"].get("token") or res_json["result"].get("accessToken")
             else:
                 token = res_json.get("token") or res_json.get("accessToken")
 
-        # Búsqueda secundaria en cabeceras HTTP por si el proxy responde con mutación
-        if not token:
+        # Extracción alternativa desde los encabezados HTTP (Headers) enviados por TP-Link
+        if not token or token == "None" or token == "":
             token = login_response.headers.get("Comntoken") or login_response.headers.get("Token") or login_response.headers.get("omada-token")
 
-        if not token:
-            print(f"No se pudo extraer el token de acceso. Respuesta de la API: {res_json}")
+        # 🔒 CONTROL DE INTEGRIDAD: Validar que el token NO sea igual a None, vacío o string 'None'
+        if token is None or str(token).strip() == "" or str(token).lower() == "none":
+            print(f"❌ Error de Validación: El token recuperado es inválido (Valor: {token}). Payload recibido: {res_json}")
+            print(f"Encabezados de respuesta: {dict(login_response.headers)}")
             return False
 
-        print(f"¡Handshake Cloud exitoso! Token obtenido: {token[:10]}...")
+        print(f"✅ ¡Token Unificado validado con éxito! (Parcial: {str(token)[:10]}...)")
         
-        # 🎯 INYECCIÓN DE HEADERS DE CONTROL REQUERIDOS POR EL PROXY
-        # Omada pide de forma explícita el token tanto en formato Bearer como en encabezados propietarios
+        # 🎯 PASO 2: AJUSTE DE CABECERAS DE SESIÓN PROPIETARIAS PARA EL CONTROLADOR REMOTO
+        # Inyectamos el token de forma redundante en todos los formatos que el proxy del conector exige
         session.headers.update({
             "Authorization": f"Bearer {token}",
             "X-Auth-Token": token,
             "Comntoken": token,
-            "omada-token": token
+            "omada-token": token,
+            "CSRFToken": token       # Añadimos protección CSRF requerida por algunos firmwares de OC300
         })
 
-        # --- PASO 2: OBTENER EL SITE ID ---
+        # --- PASO 3: OBTENER EL SITE ID ---
         clean_api_url = OMADA_API_URL.rstrip('/')
         sites_url = f"{clean_api_url}/sites"
         
-        print(f"Solicitando mapeo de sitios al controlador físico: {sites_url}")
+        print(f"Consultando mapeo de sitios en el controlador usando cabeceras unificadas: {sites_url}")
         sites_response = session.get(sites_url, timeout=12)
         
         if sites_response.status_code != 200:
-            print(f"Error al conectar con la lista de sitios del OC300 ({sites_response.status_code}): {sites_response.text}")
+            print(f"Error al validar los sitios del controlador ({sites_response.status_code}): {sites_response.text}")
             return False
 
         sites_data = sites_response.json()
@@ -119,36 +123,36 @@ def autorizar_en_omada_cloud(client_mac):
                 break
 
         if not site_id:
-            print(f"Error de consistencia: No se encontró el sitio '{OMADA_SITE_NAME}' en el controlador.")
+            print(f"Error: No se localizó ningún sitio llamado '{OMADA_SITE_NAME}'. Estructura: {sites_data}")
             return False
 
-        # --- PASO 3: ENVIAR COMANDO DE AUTORIZACIÓN (LIBERACIÓN DE MAC) ---
+        # --- PASO 4: ENVIAR COMANDO DE AUTORIZACIÓN (CAMBIAR DE PENDING A CONNECTED) ---
         auth_url = f"{clean_api_url}/sites/{site_id}/cmd/authorizations"
         formatted_mac = client_mac.replace(":", "-").upper()
         
         auth_payload = {
             "mac": formatted_mac,
-            "action": 1,          # 1 = Mover de PENDING a CONNECTED / Otorgar acceso a Internet
-            "duration": 1440      # Duración: 24 horas (en minutos)
+            "action": 1,          # 1 = Autorizar acceso / Liberar tráfico en el AP
+            "duration": 1440      # Concesión por 24 horas (en minutos)
         }
 
-        print(f"Enviando señal de mutación de estado a Omada para la MAC: {formatted_mac}")
+        print(f"Despachando orden de liberación con token validado para la MAC [{formatted_mac}]...")
         auth_response = session.post(auth_url, json=auth_payload, timeout=12)
         
         if auth_response.status_code == 200:
             auth_result = auth_response.json()
             if auth_result.get("errorCode") == 0 or auth_result.get("result") == "success":
-                print(f"¡ÉXITO TOTAL! Dispositivo {formatted_mac} autorizado correctamente. Internet liberado.")
+                print(f"🚀 ¡ÉXITO TOTAL! Dispositivo {formatted_mac} autorizado correctamente. El estado cambiará a CONNECTED.")
                 return True
             else:
-                print(f"El controlador físico rechazó la ejecución del comando: {auth_result}")
+                print(f"El controlador físico rechazó el comando con el token activo: {auth_result}")
                 return False
         else:
-            print(f"Error en la llamada de autorización externa ({auth_response.status_code}): {auth_response.text}")
+            print(f"Error HTTP al enviar comando de autorización ({auth_response.status_code}): {auth_response.text}")
             return False
 
     except Exception as e:
-        print(f"Excepción controlada en el módulo Omada Cloud: {e}")
+        print(f"Excepción crítica interceptada en el módulo Omada Cloud: {e}")
         return False
 
 # ==========================================
