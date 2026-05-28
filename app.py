@@ -47,11 +47,9 @@ def autorizar_en_omada_cloud(client_mac):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
         })
 
-        # Extraemos la raíz limpia del conector API (https://use1-api-omada-controller-connector.tplinkcloud.com)
         base_url = OMADA_API_URL.split('/api')[0].rstrip('/')
-        
-        # 🎯 Endpoint oficial de Login para Omada Controller Connector API
         login_url = f"{base_url}/api/v1/login"
+        
         login_payload = {
             "name": OMADA_USER,
             "password": OMADA_PASSWORD
@@ -61,27 +59,49 @@ def autorizar_en_omada_cloud(client_mac):
         login_response = session.post(login_url, json=login_payload, timeout=10)
         
         if login_response.status_code != 200:
-            print(f"Fallo de autenticación en el conector ({login_response.status_code}). Intentando formato alternativo...")
+            print(f"Fallo inicial en conector ({login_response.status_code}). Intentando formato tradicional...")
             login_url = f"{base_url}/api/login"
             login_payload = {"username": OMADA_USER, "password": OMADA_PASSWORD}
             login_response = session.post(login_url, json=login_payload, timeout=10)
 
         if login_response.status_code != 200:
-            print(f"Error crítico final en Omada Login ({login_response.status_code}): {login_response.text[:250]}")
+            print(f"Error crítico en Omada Login ({login_response.status_code}): {login_response.text[:250]}")
             return False
             
-        login_data = login_response.json()
-        token = login_data.get("result", {}).get("token")
+        # 🎯 EXTRACCIÓN ROBUSTA DEL TOKEN EN OMADA CLOUD
+        token = None
         
+        # 1. Intentar buscar en las cabeceras (Omada Cloud Connector suele enviarlo aquí)
+        token = login_response.headers.get("Comntoken") or login_response.headers.get("Token") or login_response.headers.get("X-Auth-Token")
+        
+        # 2. Si no está en los headers, buscamos exhaustivamente en el cuerpo JSON
         if not token:
-            print(f"No se encontró el token en la respuesta de Omada: {login_data}")
+            try:
+                login_data = login_response.json()
+                if login_data:
+                    # Inspeccionar variaciones comunes de la API de TP-Link
+                    if "result" in login_data and isinstance(login_data["result"], dict):
+                        token = login_data["result"].get("token")
+                    else:
+                        token = login_data.get("token") or login_data.get("accessToken")
+            except Exception as json_err:
+                print(f"No se pudo parsear el JSON de login, buscando solo en headers. Info: {json_err}")
+
+        if not token:
+            print(f"Error: No se pudo encontrar el token de acceso en la respuesta de Omada. Headers recibidos: {dict(login_response.headers)}")
+            print(f"Cuerpo recibido: {login_response.text[:250]}")
             return False
             
-        print("¡Sesión establecida con éxito en la nube! Token obtenido.")
-        session.headers.update({"Authorization": f"Bearer {token}"})
+        print("¡Sesión establecida con éxito en la nube! Token obtenido de forma segura.")
+        
+        # Estructuramos la cabecera según los estándares de Omada Cloud
+        session.headers.update({
+            "Authorization": f"Bearer {token}",
+            "X-Auth-Token": token,
+            "Comntoken": token
+        })
         
         # 2. Consultar los sitios del controlador
-        # Apunta directamente a: https://use1-api-omada-controller-connector.tplinkcloud.com/api/v1/controllers/<id>/sites
         sites_url = f"{OMADA_API_URL}/sites"
         print(f"Buscando sitios en la ruta del controlador: {sites_url}")
         
@@ -93,17 +113,23 @@ def autorizar_en_omada_cloud(client_mac):
         sites_data = sites_response.json()
         
         site_id = None
-        for site in sites_data.get("result", {}).get("data", []):
+        # Validamos de forma segura que exista la estructura esperada en el result
+        sites_list = sites_data.get("result", {}) if isinstance(sites_data.get("result"), dict) else {}
+        sites_data_array = sites_list.get("data", []) if isinstance(sites_list, dict) else sites_data.get("data", [])
+        
+        if not sites_data_array and isinstance(sites_data.get("result"), list):
+            sites_data_array = sites_data["result"]
+
+        for site in sites_data_array:
             if site.get("name") == OMADA_SITE_NAME:
                 site_id = site.get("id")
                 break
                 
         if not site_id:
-            print(f"No se encontró ningún sitio llamado: {OMADA_SITE_NAME}")
+            print(f"No se encontró ningún sitio llamado: {OMADA_SITE_NAME}. Sitios disponibles: {sites_data}")
             return False
 
-        # 3. Autorizar la MAC del usuario en el sitio correspondiente
-        # Construye: https://use1-api-omada-controller-connector.tplinkcloud.com/api/v1/controllers/<id>/sites/<site_id>/cmd/authorizations
+        # 3. Autorizar la MAC del usuario
         auth_url = f"{OMADA_API_URL}/sites/{site_id}/cmd/authorizations"
         auth_payload = {
             "mac": client_mac,
@@ -111,15 +137,19 @@ def autorizar_en_omada_cloud(client_mac):
             "duration": 1440      # 24 horas (en minutos)
         }
         
-        print(f"Enviando comando de liberación para la MAC: {client_mac}")
+        print(f"Enviando comando de liberación para la MAC: {client_mac} al sitio {site_id}")
         auth_response = session.post(auth_url, json=auth_payload, timeout=10)
-        auth_result = auth_response.json()
         
-        if auth_response.status_code == 200 and auth_result.get("errorCode") == 0:
-            print(f"¡ÉXITO TOTAL! Dispositivo {client_mac} autorizado de forma remota en Omada Cloud.")
-            return True
+        if auth_response.status_code == 200:
+            auth_result = auth_response.json()
+            if auth_result.get("errorCode") == 0 or auth_result.get("result") == "success":
+                print(f"¡ÉXITO TOTAL! Dispositivo {client_mac} autorizado de forma remota en Omada Cloud.")
+                return True
+            else:
+                print(f"El conector de Omada rechazó la autorización: {auth_result}")
+                return False
         else:
-            print(f"El conector de Omada rechazó la autorización: {auth_result}")
+            print(f"Error HTTP en comando de autorización ({auth_response.status_code}): {auth_response.text}")
             return False
             
     except Exception as e:
