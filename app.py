@@ -48,8 +48,8 @@ def autorizar_en_omada_cloud(client_mac):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
         })
 
-        # Extraemos la raíz limpia del servidor eliminando el árbol de controladores
-        base_url = "https://use1-api-omada-controller-connector.tplinkcloud.com"
+        # Extraemos la raíz limpia del servidor desde OMADA_API_URL
+        base_url = OMADA_API_URL.split('/api')[0].rstrip('/')
         login_url = f"{base_url}/api/v1/login"
         
         login_payload = {
