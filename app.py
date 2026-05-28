@@ -43,50 +43,53 @@ def autorizar_en_omada_cloud(client_mac):
         session = requests.Session()
         session.headers.update({
             "Content-Type": "application/json",
-            "Accept": "application/json"
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
         })
 
-        # Limpiamos la URL para evitar duplicaciones
+        # Extraemos la raíz limpia del conector API (https://use1-api-omada-controller-connector.tplinkcloud.com)
         base_url = OMADA_API_URL.split('/api')[0].rstrip('/')
         
-        # 🎯 Endpoint estándar para controladoras en Omada Cloud
+        # 🎯 Endpoint oficial de Login para Omada Controller Connector API
         login_url = f"{base_url}/api/v1/login"
-        
-        print(f"Intentando inicio de sesión en Omada Cloud: {login_url}")
         login_payload = {
-            "name": OMADA_USER,       # Nota: Algunas versiones de la API v1 piden 'name' en lugar de 'username'
+            "name": OMADA_USER,
             "password": OMADA_PASSWORD
         }
         
+        print(f"Iniciando sesión en el Conector API de Omada: {login_url}")
         login_response = session.post(login_url, json=login_payload, timeout=10)
         
-        # Si falla, intentamos con el formato alternativo tradicional
         if login_response.status_code != 200:
-            print(f"Fallo inicial con 'name' ({login_response.status_code}). Probando con 'username'...")
+            print(f"Fallo de autenticación en el conector ({login_response.status_code}). Intentando formato alternativo...")
             login_url = f"{base_url}/api/login"
             login_payload = {"username": OMADA_USER, "password": OMADA_PASSWORD}
             login_response = session.post(login_url, json=login_payload, timeout=10)
 
         if login_response.status_code != 200:
-            print(f"Error crítico en Omada Login ({login_response.status_code}): {login_response.text[:200]}")
+            print(f"Error crítico final en Omada Login ({login_response.status_code}): {login_response.text[:250]}")
             return False
             
         login_data = login_response.json()
         token = login_data.get("result", {}).get("token")
         
         if not token:
-            print(f"No se pudo extraer el token de la respuesta: {login_data}")
+            print(f"No se encontró el token en la respuesta de Omada: {login_data}")
             return False
             
-        print("¡Sesión iniciada con éxito! Token obtenido.")
+        print("¡Sesión establecida con éxito en la nube! Token obtenido.")
+        session.headers.update({"Authorization": f"Bearer {token}"})
         
-        # Cabecera de autorización para los siguientes pasos
-        headers = {"Authorization": f"Bearer {token}"}
-        api_v1_url = f"{base_url}/api/v1"
+        # 2. Consultar los sitios del controlador
+        # Apunta directamente a: https://use1-api-omada-controller-connector.tplinkcloud.com/api/v1/controllers/<id>/sites
+        sites_url = f"{OMADA_API_URL}/sites"
+        print(f"Buscando sitios en la ruta del controlador: {sites_url}")
         
-        # 2. Obtener el Site ID usando el nombre "SAAS TROPICAL"
-        sites_url = f"{api_v1_url}/sites"
-        sites_response = session.get(sites_url, headers=headers, timeout=10)
+        sites_response = session.get(sites_url, timeout=10)
+        if sites_response.status_code != 200:
+            print(f"Error al listar sitios del controlador ({sites_response.status_code}): {sites_response.text}")
+            return False
+            
         sites_data = sites_response.json()
         
         site_id = None
@@ -96,29 +99,31 @@ def autorizar_en_omada_cloud(client_mac):
                 break
                 
         if not site_id:
-            print(f"No se encontró el sitio: {OMADA_SITE_NAME}")
+            print(f"No se encontró ningún sitio llamado: {OMADA_SITE_NAME}")
             return False
 
-        # 3. Autorizar la MAC del usuario
-        auth_url = f"{api_v1_url}/sites/{site_id}/cmd/authorizations"
+        # 3. Autorizar la MAC del usuario en el sitio correspondiente
+        # Construye: https://use1-api-omada-controller-connector.tplinkcloud.com/api/v1/controllers/<id>/sites/<site_id>/cmd/authorizations
+        auth_url = f"{OMADA_API_URL}/sites/{site_id}/cmd/authorizations"
         auth_payload = {
             "mac": client_mac,
-            "action": 1,          # 1 = Autorizar / Conectar
-            "duration": 1440      # 24 horas
+            "action": 1,          # 1 = Conectar / Autorizar
+            "duration": 1440      # 24 horas (en minutos)
         }
         
-        auth_response = session.post(auth_url, json=auth_payload, headers=headers, timeout=10)
+        print(f"Enviando comando de liberación para la MAC: {client_mac}")
+        auth_response = session.post(auth_url, json=auth_payload, timeout=10)
         auth_result = auth_response.json()
         
         if auth_response.status_code == 200 and auth_result.get("errorCode") == 0:
-            print(f"¡ÉXITO APOTEÓSICO! Dispositivo {client_mac} autorizado en Omada.")
+            print(f"¡ÉXITO TOTAL! Dispositivo {client_mac} autorizado de forma remota en Omada Cloud.")
             return True
         else:
-            print(f"Omada rechazó la liberación de la MAC: {auth_result}")
+            print(f"El conector de Omada rechazó la autorización: {auth_result}")
             return False
             
     except Exception as e:
-        print(f"Fallo crítico inesperado en Omada Cloud: {e}")
+        print(f"Excepción crítica durante la comunicación con la API de Omada: {e}")
         return False
 
 # ==========================================
