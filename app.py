@@ -15,6 +15,9 @@ OMADA_USER = os.environ.get("OMADA_USER", "lcastillo@cobeca.com")
 OMADA_PASSWORD = os.environ.get("OMADA_PASSWORD", "Fu5@2026*.")
 OMADA_SITE_NAME = os.environ.get("OMADA_SITE_NAME", "SAAS TROPICAL")
 
+# Cache global del token para evitar regeneración
+cached_omada_token = None
+
 def get_db_connection():
     try:
         password = os.environ.get('DB_PASSWORD')
@@ -36,6 +39,8 @@ def get_db_connection():
         return None
 
 def autorizar_en_omada_cloud(client_mac):
+    global cached_omada_token
+    
     if not OMADA_PASSWORD:
         print("Error crítico: La variable OMADA_PASSWORD no está definida en Railway.")
         return False
@@ -48,44 +53,52 @@ def autorizar_en_omada_cloud(client_mac):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
         })
 
-        # Extraemos la raíz limpia del servidor desde OMADA_API_URL
-        base_url = OMADA_API_URL.split('/api')[0].rstrip('/')
-        login_url = f"{base_url}/api/v1/login"
+        # 🎯 USAR TOKEN CACHEADO SI EXISTE
+        if cached_omada_token:
+            print(f"Usando token cacheado: {cached_omada_token[:8]}...")
+            token = cached_omada_token
+        else:
+            # Extraemos la raíz limpia del servidor desde OMADA_API_URL
+            base_url = OMADA_API_URL.split('/api')[0].rstrip('/')
+            login_url = f"{base_url}/api/v1/login"
+            
+            login_payload = {
+                "name": OMADA_USER,
+                "password": OMADA_PASSWORD
+            }
+            
+            print(f"Iniciando sesión en el Conector Cloud: {login_url}")
+            login_response = session.post(login_url, json=login_payload, timeout=10)
+            
+            if login_response.status_code != 200:
+                print(f"Error de autenticación inicial en Omada Cloud (Status: {login_response.status_code})")
+                return False
+
+            res_json = login_response.json()
+            token = None
         
-        login_payload = {
-            "name": OMADA_USER,
-            "password": OMADA_PASSWORD
-        }
-        
-        print(f"Iniciando sesión en el Conector Cloud: {login_url}")
-        login_response = session.post(login_url, json=login_payload, timeout=10)
-        
-        if login_response.status_code != 200:
-            print(f"Error de autenticación inicial en Omada Cloud (Status: {login_response.status_code})")
-            return False
+            # 🎯 EXTRACCIÓN AVANZADA MULTI-CAPA DEL TOKEN
+            if res_json and isinstance(res_json, dict):
+                # Caso 1: Estructura estándar Omada Cloud (result -> token)
+                if "result" in res_json and isinstance(res_json["result"], dict):
+                    token = res_json["result"].get("token")
+                # Caso 2: Estructura directa en la raíz del JSON
+                else:
+                    token = res_json.get("token") or res_json.get("accessToken")
 
-        res_json = login_response.json()
-        token = None
-    
-        # 🎯 EXTRACCIÓN AVANZADA MULTI-CAPA DEL TOKEN
-        if res_json and isinstance(res_json, dict):
-            # Caso 1: Estructura estándar Omada Cloud (result -> token)
-            if "result" in res_json and isinstance(res_json["result"], dict):
-                token = res_json["result"].get("token")
-            # Caso 2: Estructura directa en la raíz del JSON
-            else:
-                token = res_json.get("token") or res_json.get("accessToken")
+            # Caso 3: El token viene inyectado en los Headers de la respuesta HTTP
+            if not token:
+                token = login_response.headers.get("Comntoken") or login_response.headers.get("Token") or login_response.headers.get("X-Auth-Token")
 
-        # Caso 3: El token viene inyectado en los Headers de la respuesta HTTP
-        if not token:
-            token = login_response.headers.get("Comntoken") or login_response.headers.get("Token") or login_response.headers.get("X-Auth-Token")
+            if not token:
+                print(f"No se pudo localizar el token en ninguna capa. Payload recibido: {res_json}")
+                print(f"Headers recibidos: {dict(login_response.headers)}")
+                return False
 
-        if not token:
-            print(f"No se pudo localizar el token en ninguna capa. Payload recibido: {res_json}")
-            print(f"Headers recibidos: {dict(login_response.headers)}")
-            return False
-
-        print(f"¡Token de seguridad recuperado con éxito!: {token[:8]}...")
+            print(f"¡Token de seguridad recuperado con éxito!: {token[:8]}...")
+            
+            # 🎯 GUARDAR TOKEN EN CACHE GLOBAL
+            cached_omada_token = token
         
         # Inyectamos el token en todos los formatos de Header que exige Omada
         session.headers.update({
