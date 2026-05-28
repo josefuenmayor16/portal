@@ -47,78 +47,65 @@ def autorizar_en_omada_cloud(client_mac):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
         })
 
-        # Extraemos la raíz limpia del conector
+        # Extraemos la raíz limpia del conector API
         base_url = OMADA_API_URL.split('/api')[0].rstrip('/')
-        login_url = f"{base_url}/api/v1/login"
         
-        # 🎯 payload estrictamente requerido por el Conector Cloud de TP-Link
+        # 🎯 ENLACE DE LOGIN OFICIAL PARA CLOUD CONTROLLER CONNECTORS
+        login_url = f"{base_url}/api/v1/login"
         login_payload = {
             "name": OMADA_USER,
             "password": OMADA_PASSWORD
         }
         
-        print(f"Iniciando sesión en Conector Cloud: {login_url}")
+        print(f"Iniciando handshake en Conector Cloud de Omada: {login_url}")
         login_response = session.post(login_url, json=login_payload, timeout=10)
         
-        print(f"[Diagnóstico] Status Code recibido: {login_response.status_code}")
-        print(f"[Diagnóstico] Headers recibidos: {dict(login_response.headers)}")
-        print(f"[Diagnóstico] Cuerpo crudo recibido: {login_response.text}")
-
-        # Si el conector rechaza el formato v1, probamos el endpoint alternativo sin v1
-        if login_response.status_code != 200:
-            print("Petición v1 rechazada. Intentando con endpoint alternativo /api/login...")
-            login_url = f"{base_url}/api/login"
-            login_response = session.post(login_url, json={"username": OMADA_USER, "password": OMADA_PASSWORD}, timeout=10)
-            print(f"[Diagnóstico Alt] Status Code: {login_response.status_code}")
-            print(f"[Diagnóstico Alt] Cuerpo: {login_response.text}")
+        # Manejo de fallback por si la cuenta está configurada en el árbol v2
+        if login_response.status_code != 200 or "token" not in login_response.text:
+            print("Handshake inicial V1 denegado o vacío. Intentando túnel V2 unificado...")
+            login_url = f"{base_url}/v2/api/v1/login" if "/v2" not in base_url else f"{base_url}/api/v1/login"
+            login_response = session.post(login_url, json=login_payload, timeout=10)
 
         if login_response.status_code != 200:
-            print(f"Error definitivo de autenticación en Omada Cloud ({login_response.status_code})")
+            print(f"Error de autenticación insalvable en la API de Omada ({login_response.status_code})")
             return False
 
-        # --- EXTRACCIÓN SEGURA DEL TOKEN ---
+        # Extracción e inspección limpia del payload de respuesta
+        res_json = login_response.json()
         token = None
-        
-        # 1. Intentamos leerlo como JSON
-        try:
-            res_json = login_response.json()
-            if res_json and isinstance(res_json, dict):
-                if "result" in res_json and isinstance(res_json["result"], dict):
-                    token = res_json["result"].get("token")
-                else:
-                    token = res_json.get("token") or res_json.get("accessToken")
-        except Exception:
-            pass
-
-        # 2. Si no estaba en el JSON, lo buscamos en los headers de respuesta HTTP
-        if not token:
-            token = login_response.headers.get("Comntoken") or login_response.headers.get("Token") or login_response.headers.get("X-Auth-Token")
+        if res_json and isinstance(res_json, dict):
+            if "result" in res_json and isinstance(res_json["result"], dict):
+                token = res_json["result"].get("token")
+            else:
+                token = res_json.get("token") or res_json.get("accessToken")
 
         if not token:
-            print("Error: No se pudo extraer ningún token válido de la respuesta de TP-Link.")
+            token = login_response.headers.get("Comntoken") or login_response.headers.get("Token")
+
+        if not token:
+            print("Error analítico: Credenciales aceptadas pero no se localizó el token en el payload.")
             return False
 
-        print("¡Token de Omada obtenido con éxito!")
+        print("¡Conexión establecida con éxito! Token de seguridad enlazado.")
         
-        # Inyectamos las credenciales de sesión en las cabeceras
+        # Inyección de headers globales requeridos para evitar el error de desconexión (-1200)
         session.headers.update({
             "Authorization": f"Bearer {token}",
             "X-Auth-Token": token,
             "Comntoken": token
         })
 
-        # 2. Obtener el listado de sitios asignados al controlador
+        # --- PASO 2: OBTENER EL SITE ID ---
+        # Aseguramos que la URL apunte al endpoint de control sobre el recurso controllers
         sites_url = f"{OMADA_API_URL}/sites"
-        print(f"Consultando sitios en: {sites_url}")
+        print(f"Buscando identificador para el sitio: {OMADA_SITE_NAME}")
         sites_response = session.get(sites_url, timeout=10)
         
         if sites_response.status_code != 200:
-            print(f"Error al obtener sitios ({sites_response.status_code}): {sites_response.text}")
+            print(f"Error al listar los recursos de sitios ({sites_response.status_code})")
             return False
 
         sites_data = sites_response.json()
-        
-        # Mapeo seguro del array de sitios para evitar errores de tipo NoneType
         sites_list = []
         if isinstance(sites_data.get("result"), dict):
             sites_list = sites_data["result"].get("data", [])
@@ -134,34 +121,40 @@ def autorizar_en_omada_cloud(client_mac):
                 break
 
         if not site_id:
-            print(f"No se encontró el sitio '{OMADA_SITE_NAME}'. Estructura de sitios: {sites_data}")
+            print(f"Error: El sitio '{OMADA_SITE_NAME}' no fue encontrado en este controlador.")
             return False
 
-        # 3. Enviar comando de autorización remota (Liberación de MAC)
+        # --- PASO 3: AUTORIZAR LA MAC (CAMBIO DE ESTADO PENDING -> AUTHORIZED) ---
+        # 🎯 IMPORTANTE: Para peticiones Cloud, se debe usar la ruta de comandos asíncronos 'cmd/authorizations'
         auth_url = f"{OMADA_API_URL}/sites/{site_id}/cmd/authorizations"
+        
+        # Normalizamos la MAC al formato estándar esperado por las tablas ARP de TP-Link (ej: 32-65-FC-B9-89-6D)
+        formatted_mac = client_mac.replace(":", "-").upper()
+        
         auth_payload = {
-            "mac": client_mac,
-            "action": 1,          # 1 = Autorizar acceso
-            "duration": 1440      # 24 horas (en minutos)
+            "mac": formatted_mac,
+            "action": 1,          # 1 = Conectar y liberar tráfico en el AP
+            "duration": 1440      # Concesión por 24 horas (en minutos)
         }
 
-        print(f"Enviando comando de liberación para la MAC {client_mac}...")
+        print(f"Enviando orden de cambio de estado a Omada para la MAC: {formatted_mac}")
         auth_response = session.post(auth_url, json=auth_payload, timeout=10)
         
         if auth_response.status_code == 200:
             auth_result = auth_response.json()
+            # El código de éxito nativo de Omada es errorCode: 0
             if auth_result.get("errorCode") == 0 or auth_result.get("result") == "success":
-                print(f"¡ÉXITO TOTAL! Dispositivo {client_mac} autorizado correctamente en la nube.")
+                print(f"¡ÉXITO TOTAL! Dispositivo {formatted_mac} autorizado. Estado cambiado a CONNECTED.")
                 return True
             else:
-                print(f"El controlador de Omada rechazó la petición: {auth_result}")
+                print(f"La API del controlador rechazó la mutación de estado: {auth_result}")
                 return False
         else:
-            print(f"Error HTTP al enviar la autorización ({auth_response.status_code}): {auth_response.text}")
+            print(f"Error de comunicación en el puente de autorización ({auth_response.status_code}): {auth_response.text}")
             return False
 
     except Exception as e:
-        print(f"Excepción crítica en el módulo de Omada: {e}")
+        print(f"Excepción general en el hilo de Omada Cloud: {e}")
         return False
 
 # ==========================================
