@@ -40,45 +40,53 @@ def autorizar_en_omada_cloud(client_mac):
         return False
         
     try:
-        # 🎯 Extraemos la base limpia (ej: https://use1-omada-cloud.tplinkcloud.com) para el login global
-        # Esto previene errores de formato al evitar que el endpoint final lleve el sufijo /v1
-        base_url = OMADA_API_URL.split('/api')[0]
-        login_url = f"{base_url}/api/login"
+        session = requests.Session()
+        session.headers.update({
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        })
+
+        # Limpiamos la URL para evitar duplicaciones
+        base_url = OMADA_API_URL.split('/api')[0].rstrip('/')
         
-        print(f"Iniciando sesión en Omada Cloud para el usuario: {OMADA_USER}...")
+        # 🎯 Endpoint estándar para controladoras en Omada Cloud
+        login_url = f"{base_url}/api/v1/login"
+        
+        print(f"Intentando inicio de sesión en Omada Cloud: {login_url}")
         login_payload = {
-            "username": OMADA_USER,
+            "name": OMADA_USER,       # Nota: Algunas versiones de la API v1 piden 'name' en lugar de 'username'
             "password": OMADA_PASSWORD
         }
         
-        session = requests.Session()
-        login_response = session.post(login_url, json=login_payload, timeout=7)
+        login_response = session.post(login_url, json=login_payload, timeout=10)
         
-        # Verificación de seguridad antes de procesar el JSON para evitar excepciones
+        # Si falla, intentamos con el formato alternativo tradicional
         if login_response.status_code != 200:
-            print(f"Error HTTP en Login ({login_response.status_code}): {login_response.text}")
+            print(f"Fallo inicial con 'name' ({login_response.status_code}). Probando con 'username'...")
+            login_url = f"{base_url}/api/login"
+            login_payload = {"username": OMADA_USER, "password": OMADA_PASSWORD}
+            login_response = session.post(login_url, json=login_payload, timeout=10)
+
+        if login_response.status_code != 200:
+            print(f"Error crítico en Omada Login ({login_response.status_code}): {login_response.text[:200]}")
             return False
             
         login_data = login_response.json()
-        if not login_data.get("result"):
-            print(f"Error de credenciales en Omada Cloud: {login_data}")
+        token = login_data.get("result", {}).get("token")
+        
+        if not token:
+            print(f"No se pudo extraer el token de la respuesta: {login_data}")
             return False
             
-        token = login_data["result"]["token"]
-        print("Sesión iniciada con éxito. Token obtenido.")
+        print("¡Sesión iniciada con éxito! Token obtenido.")
         
-        # Aseguramos el prefijo correcto de la API v1 para los endpoints de consulta y comandos
+        # Cabecera de autorización para los siguientes pasos
+        headers = {"Authorization": f"Bearer {token}"}
         api_v1_url = f"{base_url}/api/v1"
         
-        # 2. Obtener el Site ID usando el nombre del sitio
+        # 2. Obtener el Site ID usando el nombre "SAAS TROPICAL"
         sites_url = f"{api_v1_url}/sites"
-        headers = {"Authorization": f"Bearer {token}"}
-        sites_response = session.get(sites_url, headers=headers, timeout=7)
-        
-        if sites_response.status_code != 200:
-            print(f"Error HTTP al consultar sitios ({sites_response.status_code})")
-            return False
-            
+        sites_response = session.get(sites_url, headers=headers, timeout=10)
         sites_data = sites_response.json()
         
         site_id = None
@@ -88,33 +96,29 @@ def autorizar_en_omada_cloud(client_mac):
                 break
                 
         if not site_id:
-            print(f"No se encontró ningún sitio con el nombre: {OMADA_SITE_NAME}")
+            print(f"No se encontró el sitio: {OMADA_SITE_NAME}")
             return False
 
-        # 3. Autorizar la MAC del usuario para otorgarle Internet
+        # 3. Autorizar la MAC del usuario
         auth_url = f"{api_v1_url}/sites/{site_id}/cmd/authorizations"
         auth_payload = {
             "mac": client_mac,
-            "action": 1,          # 1 = Conectar / Autorizar
-            "duration": 1440      # 24 horas de navegación libre
+            "action": 1,          # 1 = Autorizar / Conectar
+            "duration": 1440      # 24 horas
         }
         
-        auth_response = session.post(auth_url, json=auth_payload, headers=headers, timeout=7)
-        
-        if auth_response.status_code != 200:
-            print(f"Error HTTP en autorización ({auth_response.status_code}): {auth_response.text}")
-            return False
-            
+        auth_response = session.post(auth_url, json=auth_payload, headers=headers, timeout=10)
         auth_result = auth_response.json()
-        if auth_result.get("errorCode") == 0:
-            print(f"¡ÉXITO! Dispositivo {client_mac} autorizado correctamente en Omada Cloud.")
+        
+        if auth_response.status_code == 200 and auth_result.get("errorCode") == 0:
+            print(f"¡ÉXITO APOTEÓSICO! Dispositivo {client_mac} autorizado en Omada.")
             return True
         else:
-            print(f"Omada Cloud rechazó la autorización de la MAC: {auth_result}")
+            print(f"Omada rechazó la liberación de la MAC: {auth_result}")
             return False
             
     except Exception as e:
-        print(f"Fallo crítico en la comunicación con Omada Cloud: {e}")
+        print(f"Fallo crítico inesperado en Omada Cloud: {e}")
         return False
 
 # ==========================================

@@ -161,20 +161,30 @@
     </div>
 
     <script>
-        // Captura tolerante a mayúsculas/minúsculas para evitar valores vacíos en Omada
-        const urlParams = new URLSearchParams(window.location.search);
-        
-        // Intenta obtener clientMac o clientmac, el que venga en la URL
-        const clientMacValue = urlParams.get('clientMac') || urlParams.get('clientmac') || '';
-        const apMacValue = urlParams.get('apMac') || urlParams.get('apmac') || '';
-        const targetValue = urlParams.get('target') || urlParams.get('target') || '';
+        // Al cargar la página, extraemos los parámetros que envía Omada por la URL
+        window.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            
+            // Capturamos el redirectUrl original que manda el router
+            const redirectUrl = urlParams.get('redirectUrl');
+            
+            // Intenta obtener clientMac o clientmac, el que venga en la URL
+            const clientMacValue = urlParams.get('clientMac') || urlParams.get('clientmac') || '';
+            const apMacValue = urlParams.get('apMac') || urlParams.get('apmac') || '';
+            
+            // Si hay redirectUrl, lo usamos como target; si no, buscamos el parámetro target
+            const targetValue = redirectUrl || urlParams.get('target') || '';
 
-        document.getElementById('clientMac').value = clientMacValue;
-        document.getElementById('apMac').value = apMacValue;
-        document.getElementById('target').value = targetValue;
+            document.getElementById('clientMac').value = clientMacValue;
+            document.getElementById('apMac').value = apMacValue;
+            document.getElementById('target').value = targetValue;
 
-        // Imprime en la consola del navegador del teléfono para auditoría visual básica
-        console.log("MAC del cliente capturada con éxito:", clientMacValue);
+            // Imprime en la consola del navegador del teléfono para auditoría visual básica
+            console.log("MAC del cliente capturada con éxito:", clientMacValue);
+            if (targetValue) {
+                console.log("Destino dinámico configurado: " + targetValue);
+            }
+        });
     </script>
 </body>
 </html>
