@@ -47,113 +47,114 @@ def autorizar_en_omada_cloud(client_mac):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
         })
 
+        # Limpiamos la URL para manejar la raíz del servidor
         base_url = OMADA_API_URL.split('/api')[0].rstrip('/')
-        login_url = f"{base_url}/api/v1/login"
         
+        # Payload estructurado para inicio de sesión directo/nube global
         login_payload = {
-            "name": OMADA_USER,
+            "username": OMADA_USER,
             "password": OMADA_PASSWORD
         }
         
-        print(f"Iniciando sesión en el Conector API de Omada: {login_url}")
+        # 🎯 INTENTO 1: Ruta estándar unificada global /api/v1/login
+        login_url = f"{base_url}/api/v1/login"
+        print(f"Intentando login en Omada (Ruta V1): {login_url}")
         login_response = session.post(login_url, json=login_payload, timeout=10)
         
+        # Si falla o no reconoce 'username', intentamos con 'name' en formato clásico
         if login_response.status_code != 200:
-            print(f"Fallo inicial en conector ({login_response.status_code}). Intentando formato tradicional...")
+            print(f"Ruta V1 falló ({login_response.status_code}). Probando formato alternativo...")
             login_url = f"{base_url}/api/login"
-            login_payload = {"username": OMADA_USER, "password": OMADA_PASSWORD}
-            login_response = session.post(login_url, json=login_payload, timeout=10)
+            login_response = session.post(login_url, json={"name": OMADA_USER, "password": OMADA_PASSWORD}, timeout=10)
 
         if login_response.status_code != 200:
             print(f"Error crítico en Omada Login ({login_response.status_code}): {login_response.text[:250]}")
             return False
             
-        # 🎯 EXTRACCIÓN ROBUSTA DEL TOKEN EN OMADA CLOUD
-        token = None
+        login_data = login_response.json()
+        token = login_data.get("result", {}).get("token") or login_data.get("token")
         
-        # 1. Intentar buscar en las cabeceras (Omada Cloud Connector suele enviarlo aquí)
-        token = login_response.headers.get("Comntoken") or login_response.headers.get("Token") or login_response.headers.get("X-Auth-Token")
-        
-        # 2. Si no está en los headers, buscamos exhaustivamente en el cuerpo JSON
         if not token:
-            try:
-                login_data = login_response.json()
-                if login_data:
-                    # Inspeccionar variaciones comunes de la API de TP-Link
-                    if "result" in login_data and isinstance(login_data["result"], dict):
-                        token = login_data["result"].get("token")
-                    else:
-                        token = login_data.get("token") or login_data.get("accessToken")
-            except Exception as json_err:
-                print(f"No se pudo parsear el JSON de login, buscando solo en headers. Info: {json_err}")
-
+            print(f"No se encontró token en el JSON. Verificando cabeceras HTTP...")
+            token = login_response.headers.get("Comntoken") or login_response.headers.get("Token")
+            
         if not token:
-            print(f"Error: No se pudo encontrar el token de acceso en la respuesta de Omada. Headers recibidos: {dict(login_response.headers)}")
-            print(f"Cuerpo recibido: {login_response.text[:250]}")
+            print(f"Error: Omada no entregó token de acceso. Respuesta: {login_data}")
             return False
             
-        print("¡Sesión establecida con éxito en la nube! Token obtenido de forma segura.")
+        print("¡Sesión iniciada correctamente! Token obtenido.")
         
-        # Estructuramos la cabecera según los estándares de Omada Cloud
+        # Inyectamos el token en los formatos requeridos por Omada
         session.headers.update({
             "Authorization": f"Bearer {token}",
             "X-Auth-Token": token,
             "Comntoken": token
         })
         
-        # 2. Consultar los sitios del controlador
-        sites_url = f"{OMADA_API_URL}/sites"
-        print(f"Buscando sitios en la ruta del controlador: {sites_url}")
-        
+        # Determinar si la URL base ya incluye el ID del controlador
+        # Si estás usando la URL del conector, la ruta de sitios ya tiene el formato correcto
+        if "/controllers/" in OMADA_API_URL:
+            sites_url = f"{OMADA_API_URL}/sites"
+        else:
+            sites_url = f"{base_url}/api/v1/sites"
+            
+        print(f"Consultando listado de sitios en: {sites_url}")
         sites_response = session.get(sites_url, timeout=10)
+        
         if sites_response.status_code != 200:
-            print(f"Error al listar sitios del controlador ({sites_response.status_code}): {sites_response.text}")
+            print(f"Error al listar sitios ({sites_response.status_code}): {sites_response.text}")
             return False
             
         sites_data = sites_response.json()
         
-        site_id = None
-        # Validamos de forma segura que exista la estructura esperada en el result
-        sites_list = sites_data.get("result", {}) if isinstance(sites_data.get("result"), dict) else {}
-        sites_data_array = sites_list.get("data", []) if isinstance(sites_list, dict) else sites_data.get("data", [])
-        
-        if not sites_data_array and isinstance(sites_data.get("result"), list):
-            sites_data_array = sites_data["result"]
+        # Extraer el array de sitios de forma segura
+        sites_list = []
+        if isinstance(sites_data.get("result"), dict):
+            sites_list = sites_data["result"].get("data", [])
+        elif isinstance(sites_data.get("result"), list):
+            sites_list = sites_data["result"]
+        else:
+            sites_list = sites_data.get("data", [])
 
-        for site in sites_data_array:
+        site_id = None
+        for site in sites_list:
             if site.get("name") == OMADA_SITE_NAME:
                 site_id = site.get("id")
                 break
                 
         if not site_id:
-            print(f"No se encontró ningún sitio llamado: {OMADA_SITE_NAME}. Sitios disponibles: {sites_data}")
+            print(f"No se encontró el sitio '{OMADA_SITE_NAME}'. Estructura recibida: {sites_data}")
             return False
 
-        # 3. Autorizar la MAC del usuario
-        auth_url = f"{OMADA_API_URL}/sites/{site_id}/cmd/authorizations"
+        # 3. Enviar orden de liberación de la MAC
+        if "/controllers/" in OMADA_API_URL:
+            auth_url = f"{OMADA_API_URL}/sites/{site_id}/cmd/authorizations"
+        else:
+            auth_url = f"{base_url}/api/v1/sites/{site_id}/cmd/authorizations"
+            
         auth_payload = {
             "mac": client_mac,
-            "action": 1,          # 1 = Conectar / Autorizar
-            "duration": 1440      # 24 horas (en minutos)
+            "action": 1,          # 1 = Autorizar acceso
+            "duration": 1440      # 24 horas
         }
         
-        print(f"Enviando comando de liberación para la MAC: {client_mac} al sitio {site_id}")
+        print(f"Enviando comando de liberación para la MAC {client_mac} en el sitio {site_id}...")
         auth_response = session.post(auth_url, json=auth_payload, timeout=10)
         
         if auth_response.status_code == 200:
             auth_result = auth_response.json()
             if auth_result.get("errorCode") == 0 or auth_result.get("result") == "success":
-                print(f"¡ÉXITO TOTAL! Dispositivo {client_mac} autorizado de forma remota en Omada Cloud.")
+                print(f"¡ÉXITO TOTAL! Dispositivo {client_mac} autorizado correctamente.")
                 return True
             else:
-                print(f"El conector de Omada rechazó la autorización: {auth_result}")
+                print(f"El controlador rechazó la solicitud: {auth_result}")
                 return False
         else:
-            print(f"Error HTTP en comando de autorización ({auth_response.status_code}): {auth_response.text}")
+            print(f"Fallo HTTP al enviar autorización ({auth_response.status_code}): {auth_response.text}")
             return False
             
     except Exception as e:
-        print(f"Excepción crítica durante la comunicación con la API de Omada: {e}")
+        print(f"Excepción controlada en el módulo de Omada: {e}")
         return False
 
 # ==========================================
