@@ -48,8 +48,9 @@ def autorizar_en_omada_cloud(client_mac):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
         })
 
- # Usamos la URL de login específica configurada en OMADA_LOGIN_URL
-        login_url = OMADA_LOGIN_URL
+        # Extraemos la raíz limpia del servidor desde OMADA_API_URL
+        base_url = OMADA_API_URL.split('/api')[0].rstrip('/')
+        login_url = f"{base_url}/api/v1/login"
         
         login_payload = {
             "name": OMADA_USER,
@@ -57,11 +58,7 @@ def autorizar_en_omada_cloud(client_mac):
         }
         
         print(f"Iniciando sesión en el Conector Cloud: {login_url}")
-        print(f"URL API configurada: {OMADA_API_URL}")
         login_response = session.post(login_url, json=login_payload, timeout=10)
-        
-        print(f"Status Code: {login_response.status_code}")
-        print(f"Respuesta completa: {login_response.text}")
         
         if login_response.status_code != 200:
             print(f"Error de autenticación inicial en Omada Cloud (Status: {login_response.status_code})")
@@ -213,14 +210,10 @@ def registrar_usuario():
         
         # 4. SOLICITAR ACCESO A INTERNET A TRAVÉS DE LA MAC
         if clientMac:
-            # La MAC viene de Omada en formato con guiones (ej: AA-BB-CC-DD-EE-FF)
-            # La pasamos directamente ya que autorizar_en_omada_cloud la normaliza internamente
-            print(f"Enviando orden de liberación remota para la MAC: {clientMac}")
-            resultado = autorizar_en_omada_cloud(clientMac)
-            if resultado:
-                print("Autorización completada exitosamente")
-            else:
-                print("ADVERTENCIA: La autorización falló. Revisar logs para más detalles.")
+            # Limpiar el formato de la MAC (ej: de 78-20-51... a 78:20:51...)
+            mac_limpia = clientMac.replace("-", ":").strip().lower()
+            print(f"Enviando orden de liberación remota para la MAC: {mac_limpia}")
+            autorizar_en_omada_cloud(mac_limpia)
         else:
             print("Advertencia: No se recibió clientMac del formulario, no se puede liberar internet automáticamente.")
         
