@@ -5,9 +5,7 @@ from flask import Flask, request, redirect, jsonify, send_from_directory
 
 app = Flask(__name__)
 
-# ==========================================
-# CONFIGURACIÓN DE OMADA CLOUD (PRODUCCIÓN)
-# ==========================================
+
 # Railway leerá los textos planos configurados en tu panel de variables
 OMADA_API_URL = os.environ.get("OMADA_API_URL", "https://use1-omada-cloud.tplinkcloud.com/api/v1")
 OMADA_LOGIN_URL = os.environ.get("OMADA_LOGIN_URL", "https://use1-api-omada-controller-connector.tplinkcloud.com/api/v1/login")
@@ -22,7 +20,7 @@ def get_db_connection():
     try:
         password = os.environ.get('DB_PASSWORD')
         if password:
-            password = password.strip()  # Elimina espacios accidentales
+            password = password.strip()
             
         conn = pymysql.connect(
             host=os.environ.get('DB_HOST', 'mysql.railway.internal'),
@@ -53,7 +51,7 @@ def autorizar_en_omada_cloud(client_mac):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
         })
 
-        # 🎯 USAR TOKEN CACHEADO SI EXISTE
+        # usa el token casheado si existe
         if cached_omada_token:
             print(f"Usando token cacheado: {cached_omada_token[:8]}...")
             token = cached_omada_token
@@ -77,7 +75,7 @@ def autorizar_en_omada_cloud(client_mac):
             res_json = login_response.json()
             token = None
         
-            # 🎯 EXTRACCIÓN AVANZADA MULTI-CAPA DEL TOKEN
+            # extracción avanzada multi-capa del token
             if res_json and isinstance(res_json, dict):
                 # Caso 1: Estructura estándar Omada Cloud (result -> token)
                 if "result" in res_json and isinstance(res_json["result"], dict):
@@ -97,7 +95,7 @@ def autorizar_en_omada_cloud(client_mac):
 
             print(f"¡Token de seguridad recuperado con éxito!: {token[:8]}...")
             
-            # 🎯 GUARDAR TOKEN EN CACHE GLOBAL
+            # guardar token en cache global
             cached_omada_token = token
         
         # Inyectamos el token en todos los formatos de Header que exige Omada
@@ -190,7 +188,7 @@ def registrar_usuario():
     direccion = request.form.get('direccion')
     clientMac = request.form.get('clientMac')
     apMac = request.form.get('apMac')
-    target = request.form.get('target')  # 🎯 Capturamos la URL destino original de Omada
+    target = request.form.get('target')  # Capturamos la URL destino original de Omada
     
     print(f"Procesando registro: nombre={nombre} {apellido}, MAC={clientMac}")
 
