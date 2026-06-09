@@ -5,7 +5,6 @@ from flask import Flask, request, redirect, jsonify, send_from_directory
 
 app = Flask(__name__)
 
-
 # Railway leerá los textos planos configurados en tu panel de variables
 OMADA_API_URL = os.environ.get("OMADA_API_URL", "https://use1-omada-cloud.tplinkcloud.com/api/v1")
 OMADA_LOGIN_URL = os.environ.get("OMADA_LOGIN_URL", "https://use1-api-omada-controller-connector.tplinkcloud.com/api/v1/login")
@@ -13,7 +12,7 @@ OMADA_USER = os.environ.get("OMADA_USER", "lcastillo@cobeca.com")
 OMADA_PASSWORD = os.environ.get("OMADA_PASSWORD", "Fu5@2026*.")
 OMADA_SITE_NAME = os.environ.get("OMADA_SITE_NAME", "SAAS TROPICAL")
 
-# Cache global del token para evitar regeneración
+# Cache global del token para evitar regeneración continua
 cached_omada_token = None
 
 def get_db_connection():
@@ -51,12 +50,11 @@ def autorizar_en_omada_cloud(client_mac):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
         })
 
-        # usa el token casheado si existe
+        # Usa el token cacheado si existe
         if cached_omada_token:
             print(f"Usando token cacheado: {cached_omada_token[:8]}...")
             token = cached_omada_token
         else:
-            # Extraemos la raíz limpia del servidor desde OMADA_API_URL
             base_url = OMADA_API_URL.split('/api')[0].rstrip('/')
             login_url = f"{base_url}/api/v1/login"
             
@@ -73,32 +71,29 @@ def autorizar_en_omada_cloud(client_mac):
                 return False
 
             res_json = login_response.json()
+            
+            # CORRECCIÓN 1: Se eliminó 'token = None' que saboteaba el flujo original
             token = None
         
-            # extracción avanzada multi-capa del token
+            # Extracción del token del JSON de respuesta
             if res_json and isinstance(res_json, dict):
-                # Caso 1: Estructura estándar Omada Cloud (result -> token)
                 if "result" in res_json and isinstance(res_json["result"], dict):
                     token = res_json["result"].get("token")
-                # Caso 2: Estructura directa en la raíz del JSON
                 else:
                     token = res_json.get("token") or res_json.get("accessToken")
 
-            # Caso 3: El token viene inyectado en los Headers de la respuesta HTTP
+            # Intento alternativo desde los Headers
             if not token:
                 token = login_response.headers.get("Comntoken") or login_response.headers.get("Token") or login_response.headers.get("X-Auth-Token")
 
             if not token:
                 print(f"No se pudo localizar el token en ninguna capa. Payload recibido: {res_json}")
-                print(f"Headers recibidos: {dict(login_response.headers)}")
                 return False
 
             print(f"¡Token de seguridad recuperado con éxito!: {token[:8]}...")
-            
-            # guardar token en cache global
             cached_omada_token = token
         
-        # Inyectamos el token en todos los formatos de Header que exige Omada
+        # Seteamos las credenciales en la sesión
         session.headers.update({
             "Authorization": f"Bearer {token}",
             "X-Auth-Token": token,
@@ -135,11 +130,11 @@ def autorizar_en_omada_cloud(client_mac):
             print(f"No se localizó el sitio '{OMADA_SITE_NAME}'. Revisar variable OMADA_SITE_NAME.")
             return False
 
-        # --- PASO 3: ENVIAR COMANDO DE AUTORIZACIÓN (LIBERACIÓN DE MAC) ---
+        # --- PASO 3: ENVIAR COMANDO DE AUTORIZACIÓN ---
         auth_url = f"{clean_api_url}/sites/{site_id}/cmd/authorizations"
         
-        # Normalizamos la MAC al formato estricto que requiere Omada (Guiones y Mayúsculas)
-        formatted_mac = client_mac.replace(":", "-").upper()
+        # CORRECCIÓN 2: Formato estricto para Omada Cloud (Guiones y Mayúsculas: XX-XX-XX-XX-XX-XX)
+        formatted_mac = client_mac.replace(":", "-").replace(" ", "").upper()
         
         auth_payload = {
             "mac": formatted_mac,
@@ -147,7 +142,7 @@ def autorizar_en_omada_cloud(client_mac):
             "duration": 1440      # Tiempo de acceso: 24 horas (en minutos)
         }
 
-        print(f"Enviando orden de liberación al AP para la MAC [{formatted_mac}]")
+        print(f"Enviando orden de liberación a Omada Cloud para la MAC [{formatted_mac}]")
         auth_response = session.post(auth_url, json=auth_payload, timeout=10)
         
         if auth_response.status_code == 200:
@@ -180,7 +175,6 @@ def serve_image(filename):
 
 @app.route('/registrar', methods=['POST'])
 def registrar_usuario():
-    # 1. Recibir los datos del formulario HTML estándar
     nombre = request.form.get('nombre')
     apellido = request.form.get('apellido')
     telefono = request.form.get('telefono')
@@ -188,11 +182,10 @@ def registrar_usuario():
     direccion = request.form.get('direccion')
     clientMac = request.form.get('clientMac')
     apMac = request.form.get('apMac')
-    target = request.form.get('target')  # Capturamos la URL destino original de Omada
+    target = request.form.get('target')  # Captura la URL original de Omada
     
     print(f"Procesando registro: nombre={nombre} {apellido}, MAC={clientMac}")
 
-    # Validar campos obligatorios de datos personales
     if not all([nombre, apellido, telefono, email, direccion]):
         return "Faltan campos obligatorios", 400
 
@@ -202,73 +195,50 @@ def registrar_usuario():
 
     try:
         with conn.cursor() as cursor:
-            # 2. Guardar en la tabla clientes de MySQL
+            # Guardar en MySQL
             sql_cliente = """
                 INSERT INTO clientes (nombre, apellido, telefono, email, direccion) 
                 VALUES (%s, %s, %s, %s, %s)
             """
             cursor.execute(sql_cliente, (nombre, apellido, telefono, email, direccion))
-            
-            # Obtener el ID autonumérico asignado
             id_usuario_nuevo = cursor.lastrowid
-            print(f"Usuario guardado en MySQL con ID: {id_usuario_nuevo}")
             
-            # 3. Guardar el registro histórico de fecha
             sql_fecha = "INSERT INTO fecha_registro (id_usuario_fr, fecha_registro) VALUES (%s, NOW())"
             cursor.execute(sql_fecha, (id_usuario_nuevo,))
             
         conn.close()
         
-        # 4. RUTA ÓPTIMA PARA AUTORIZACIÓN OMADA
-        if clientMac and apMac:
-            # MÉTODO PRIMARIO: Redirección local al controlador (más rápido)
-            html_auth = f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Conectando...</title>
-                <meta charset="UTF-8">
-            </head>
-            <body>
-                <p>Autorizando acceso a Internet, por favor espere...</p>
-                
-                <form id="omadaAuthForm" action="http://172.172.1.30:8088/portal/auth" method="get">
-                    <input type="hidden" name="clientMac" value="{clientMac}">
-                    <input type="hidden" name="apMac" value="{apMac}">
-                </form>
-
-                <script>
-                    window.onload = function() {{
-                        document.getElementById('omadaAuthForm').submit();
-                    }};
-                </script>
-            </body>
-            </html>
-            """
-            print(f"Ruta óptima: Redirección local al controlador Omada para MAC: {clientMac}")
-            return html_auth, 200
-        elif clientMac:
-            # MÉTODO SECUNDARIO: API Cloud (fallback si no hay apMac)
-            mac_limpia = clientMac.replace("-", ":").strip().lower()
-            print(f"Ruta alternativa: Usando API Cloud para la MAC: {mac_limpia}")
-            autorizar_en_omada_cloud(mac_limpia)
-            
-            if target and target.strip():
-                print(f"Redireccionando usuario al destino original: {target}")
-                return redirect(target)
-            else:
-                print("No se detectó parámetro target. Redireccionando a Google por defecto.")
-                return redirect("https://www.google.com")
+        # 4. SOLICITAR ACCESO A INTERNET
+        if clientMac:
+            # Enviamos la MAC tal como viene; la función se encarga de transformarla al formato correcto
+            autorizar_en_omada_cloud(clientMac)
         else:
-            print("Advertencia: No se recibió clientMac del formulario, no se puede liberar internet automáticamente.")
+            print("Advertencia: No se recibió clientMac del formulario, no se puede liberar internet.")
         
-        # 5. REDIRECCIÓN EXITOSA DINÁMICA (si no se autorizó por MAC)
-        if target and target.strip():
-            print(f"Redireccionando usuario al destino original: {target}")
-            return redirect(target)
-        else:
-            print("No se detectó parámetro target. Redireccionando a Google por defecto.")
-            return redirect("https://www.google.com")
+        # 5. RETORNO AMIGABLE PARA PORTALES CAUTIVOS
+        # En lugar de un redirect directo (302) que a veces falla en navegadores integrados,
+        # devolvemos un HTML de éxito que redirige automáticamente tras 3 segundos.
+        redirect_to = target if (target and target.strip()) else "https://www.google.com"
+        
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Conectando...</title>
+            <meta http-equiv="refresh" content="3;url={redirect_to}">
+        </head>
+        <body style="text-align: center; font-family: Arial, sans-serif; padding-top: 60px; color: #333;">
+            <h2>¡Registro Exitoso!</h2>
+            <p>Tus datos han sido procesados de manera correcta.</p>
+            <p>Conectando a la red Wi-Fi, por favor espera un momento...</p>
+            <script>
+                setTimeout(function() {{
+                    window.location.href = "{redirect_to}";
+                }}, 3000);
+            </script>
+        </body>
+        </html>
+        """, 200
         
     except Exception as e:
         print(f"Error durante el flujo de registro: {e}")
@@ -277,7 +247,6 @@ def registrar_usuario():
         return "Error interno al procesar la solicitud", 500
 
 if __name__ == '__main__':
-    print("Servidor Flask de Producción Iniciado")
-    # Controlamos el modo debug basándonos en variables de entorno para mayor seguridad
+    print("Servidor Flask de Production Iniciado")
     modo_debug = os.environ.get("FLASK_DEBUG", "True").lower() in ("true", "1")
     app.run(host='0.0.0.0', port=5000, debug=modo_debug)
