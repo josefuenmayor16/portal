@@ -132,7 +132,11 @@ def autorizar_en_omada_local(client_mac):
         }
         
         print(f"Liberando internet en OC300 para la MAC [{formatted_mac}]")
+        print(f"URL de autorización: {auth_url}")
+        print(f"Payload de autorización: {auth_payload}")
         auth_response = session.post(auth_url, json=auth_payload, timeout=8)
+        
+        print(f"Respuesta del OC300 (Status {auth_response.status_code}): {auth_response.text}")
         
         if auth_response.status_code == 200:
             auth_result = auth_response.json()
@@ -202,46 +206,23 @@ def registrar_usuario():
             
         conn.close()
         
-        # RUTA ÓPTIMA PARA AUTORIZACIÓN OMADA
-        if clientMac and apMac:
-            # MÉTODO PRIMARIO: Redirección local al controlador (recomendado por TP-Link)
-            html_auth = f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Conectando...</title>
-                <meta charset="UTF-8">
-            </head>
-            <body>
-                <p>Autorizando acceso a Internet, por favor espere...</p>
-                
-                <form id="omadaAuthForm" action="http://172.172.1.30:8088/portal/auth" method="get">
-                    <input type="hidden" name="clientMac" value="{clientMac}">
-                    <input type="hidden" name="apMac" value="{apMac}">
-                </form>
-
-                <script>
-                    window.onload = function() {{
-                        document.getElementById('omadaAuthForm').submit();
-                    }};
-                </script>
-            </body>
-            </html>
-            """
-            print(f"Redirección al controlador Omada para conectar a PRUEBAS SAAS: MAC={clientMac}")
-            return html_auth, 200
-        elif clientMac:
-            # MÉTODO SECUNDARIO: API Local (fallback si no hay apMac)
+        # AUTORIZACIÓN EN OMADA (siempre que haya clientMac)
+        if clientMac:
             mac_limpia = clientMac.replace("-", ":").strip().lower()
-            print(f"Usando API Local para autorizar MAC: {mac_limpia}")
-            autorizar_en_omada_local(mac_limpia)
+            print(f"Autorizando dispositivo en Omada Local: MAC={mac_limpia}")
+            autorizacion_exitosa = autorizar_en_omada_local(mac_limpia)
             
-            redirect_to = target if (target and target.strip()) else "https://www.google.com"
-            return redirect(redirect_to)
+            if autorizacion_exitosa:
+                print(f"¡Dispositivo {mac_limpia} autorizado exitosamente en Omada!")
+            else:
+                print(f"ADVERTENCIA: No se pudo autorizar {mac_limpia} en Omada vía API")
         else:
             print("Advertencia: No se recibió clientMac, no se puede autorizar automáticamente.")
-            redirect_to = target if (target and target.strip()) else "https://www.google.com"
-            return redirect(redirect_to)
+        
+        # REDIRECCIÓN AL USUARIO
+        redirect_to = target if (target and target.strip()) else "https://www.google.com"
+        print(f"Redireccionando usuario a: {redirect_to}")
+        return redirect(redirect_to)
         
     except Exception as e:
         print(f"Error durante el flujo de registro: {e}")
