@@ -219,18 +219,21 @@ def registrar_usuario():
             
         conn.close()
         
-        # 4. REDIRECCIÓN AL CONTROLADOR OMADA LOCAL PARA AUTORIZACIÓN
-        if clientMac and apMac:
-            # Redirigir al endpoint de autorización del controlador Omada local
-            omada_url = f"http://172.172.1.30:8088/portal/auth?clientMac={clientMac}&apMac={apMac}"
-            print(f"Redireccionando al controlador Omada para autorización: {omada_url}")
-            return redirect(omada_url)
-        elif target and target.strip():
-            # Fallback: redirección al destino original si no hay MAC
+        # 4. SOLICITAR ACCESO A INTERNET A TRAVÉS DE LA MAC
+        if clientMac:
+            # Limpiar el formato de la MAC (ej: de 78-20-51... a 78:20:51...)
+            mac_limpia = clientMac.replace("-", ":").strip().lower()
+            print(f"Enviando orden de liberación remota para la MAC: {mac_limpia}")
+            autorizar_en_omada_cloud(mac_limpia)
+        else:
+            print("Advertencia: No se recibió clientMac del formulario, no se puede liberar internet automáticamente.")
+        
+        # 5. REDIRECCIÓN EXITOSA DINÁMICA
+        if target and target.strip():
             print(f"Redireccionando usuario al destino original: {target}")
             return redirect(target)
         else:
-            print("No se detectó clientMac/apMac ni target. Redireccionando a Google por defecto.")
+            print("No se detectó parámetro target. Redireccionando a Google por defecto.")
             return redirect("https://www.google.com")
         
     except Exception as e:
