@@ -1,30 +1,41 @@
 import os
+import re
 import pymysql
 import requests
 import urllib3
-from flask import Flask, request, redirect, send_from_directory
+from flask import Flask, request, redirect, send_from_directory, jsonify
 
 # Deshabilitar advertencias de certificados auto-firmados del OC300
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
 
-# Configuración obligatoria apuntando directamente a tu controlador OC300 local
+# ==========================================
+# CONFIGURACIÓN OMADA OC300 LOCAL
+# ==========================================
 OMADA_CONTROLLER_URL = os.environ.get("OMADA_CONTROLLER_URL", "https://172.172.1.30:8043")
-OMADA_USER = os.environ.get("OMADA_USER", "lcastillo@cobeca.com")
-OMADA_PASSWORD = os.environ.get("OMADA_PASSWORD", "Fu5@2026*.")
-OMADA_SITE_NAME = os.environ.get("OMADA_SITE_NAME", "SAAS TROPICAL")
+OMADA_USER           = os.environ.get("OMADA_USER",           "lcastillo@cobeca.com")
+OMADA_PASSWORD       = os.environ.get("OMADA_PASSWORD",       "Fu5@2026*.")
+OMADA_SITE_NAME      = os.environ.get("OMADA_SITE_NAME",      "SAAS TROPICAL")
 
-# Cache global para optimizar el performance
-cached_omada_token = None
-cached_site_id = None
+# ==========================================
+# CACHÉ GLOBAL (se restablece al expirar)
+# ==========================================
+_cache = {
+    "token":    None,
+    "site_id":  None,
+    "omadac_id": None,
+}
+
+# ==========================================
+# BASE DE DATOS
+# ==========================================
 
 def get_db_connection():
     try:
-        password = os.environ.get('DB_PASSWORD')
+        password = os.environ.get('DB_PASSWORD', '')
         if password:
             password = password.strip()
-            
         conn = pymysql.connect(
             host=os.environ.get('DB_HOST', 'mysql.railway.internal'),
             user=os.environ.get('DB_USER', 'root'),
@@ -32,135 +43,229 @@ def get_db_connection():
             database=os.environ.get('DB_NAME', 'railway'),
             port=3306,
             autocommit=True,
-            defer_connect=False
         )
         return conn
     except Exception as e:
-        print(f"Error conectando a MySQL interno: {e}")
+        print(f"[DB] Error de conexión: {e}")
         return None
 
-def autorizar_en_omada_local(client_mac):
-    global cached_omada_token, cached_site_id
-    
-    base_url = OMADA_CONTROLLER_URL.rstrip('/')
-    formatted_mac = client_mac.replace(":", "-").replace(" ", "").upper()
-    
-    session = requests.Session()
-    # Ignorar la verificación SSL ya que el OC300 local suele usar un certificado auto-firmado
-    session.verify = False 
-    
-    session.headers.update({
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-    })
+# ==========================================
+# VALIDACIONES DE DATOS
+# ==========================================
 
-    try:
-        # --- PASO 1: LOGIN Y OBTENCIÓN DEL TOKEN ---
-        if cached_omada_token:
-            token = cached_omada_token
-            print(f"Usando token local cacheado: {token[:8]}...")
-        else:
-            login_url = f"{base_url}/api/v2/login"  # Forzamos API v2 compatible con OC300 actualizados
-            login_payload = {
-                "username": OMADA_USER,
-                "password": OMADA_PASSWORD
-            }
-            
-            print(f"Iniciando sesión en OC300 Local: {login_url}")
-            login_response = session.post(login_url, json=login_payload, timeout=8)
-            
-            if login_response.status_code != 200:
-                print(f"Fallo de login en OC300 (Status: {login_response.status_code}). Revisar credenciales.")
-                return False
-                
-            res_json = login_response.json()
-            token = None
-            if res_json and isinstance(res_json, dict):
-                if "result" in res_json and isinstance(res_json["result"], dict):
-                    token = res_json["result"].get("token")
-            
-            if not token:
-                print(f"No se pudo extraer el token del OC300. Respuesta: {res_json}")
-                return False
-                
-            cached_omada_token = token
-            print(f"¡Token local generado con éxito!: {token[:8]}...")
+def validar_nombre(valor, campo="campo"):
+    """Solo letras, tildes, espacios. 2-30 caracteres."""
+    if not valor or not valor.strip():
+        return False, f"{campo} es obligatorio."
+    valor = valor.strip()
+    if len(valor) < 2 or len(valor) > 30:
+        return False, f"{campo} debe tener entre 2 y 30 caracteres."
+    if not re.match(r"^[A-Za-záéíóúÁÉÍÓÚàèìòùÀÈÌÒÙâêîôûÂÊÎÔÛäëïöüÄËÏÖÜñÑ\s'-]+$", valor):
+        return False, f"{campo} solo puede contener letras."
+    return True, valor
 
-        # Inyectar el token en la cabecera estándar de Omada local
-        session.headers.update({"Csrf-Token": token})
-        # Los controladores físicos manejan cookies de sesión tras el login
-        
-        # --- PASO 2: OBTENER EL SITE ID ---
-        if cached_site_id:
-            site_id = cached_site_id
-        else:
-            sites_url = f"{base_url}/api/v2/sites"
-            sites_response = session.get(sites_url, timeout=8)
-            
-            if sites_response.status_code != 200:
-                print(f"Error recuperando sitios del OC300: {sites_response.text}")
-                # Resetear cache del token por si caducó
-                cached_omada_token = None
-                return False
-                
-            sites_data = sites_response.json()
-            sites_list = []
-            if isinstance(sites_data.get("result"), dict):
-                sites_list = sites_data["result"].get("data", [])
-            else:
-                sites_list = sites_data.get("result", [])
-                
-            site_id = None
-            for site in sites_list:
-                if site.get("name") == OMADA_SITE_NAME:
-                    site_id = site.get("id")
-                    break
-                    
-            if not site_id:
-                print(f"No se encontró el sitio '{OMADA_SITE_NAME}' en el OC300.")
-                return False
-                
-            cached_site_id = site_id
-            print(f"Identificado Site ID Local: {site_id}")
+def validar_telefono(valor):
+    """Dígitos, guiones, paréntesis, +. 7-20 caracteres."""
+    if not valor or not valor.strip():
+        return False, "Teléfono es obligatorio."
+    valor = valor.strip()
+    if not re.match(r"^\+?[\d\s\-\(\)]{7,20}$", valor):
+        return False, "Teléfono inválido (use solo dígitos, +, - o paréntesis, 7-20 caracteres)."
+    return True, valor
 
-        # --- PASO 3: ENVIAR COMANDO DE AUTORIZACIÓN ---
-        auth_url = f"{base_url}/api/v2/sites/{site_id}/cmd/authorizations"
-        auth_payload = {
-            "mac": formatted_mac,
-            "action": 1,          # 1 = Autorizar acceso
-            "duration": 1440      # 24 horas en minutos
-        }
-        
-        print(f"Liberando internet en OC300 para la MAC [{formatted_mac}]")
-        print(f"URL de autorización: {auth_url}")
-        print(f"Payload de autorización: {auth_payload}")
-        auth_response = session.post(auth_url, json=auth_payload, timeout=8)
-        
-        print(f"Respuesta del OC300 (Status {auth_response.status_code}): {auth_response.text}")
-        
-        if auth_response.status_code == 200:
-            auth_result = auth_response.json()
-            if auth_result.get("errorCode") == 0:
-                print(f"¡ÉXITO LOCAL! Dispositivo {formatted_mac} autorizado en el OC300.")
-                return True
-            else:
-                print(f"El OC300 denegó la autorización: {auth_result}")
-                # Si el error es de sesión expirada, limpiamos el caché para reintentar en la próxima
-                if auth_result.get("errorCode") in [-1000, -1005, -1200]:
-                    cached_omada_token = None
-                return False
-        else:
-            print(f"Error HTTP en comando de autorización ({auth_response.status_code}): {auth_response.text}")
-            cached_omada_token = None
-            return False
+def validar_email(valor):
+    """Validación estándar de email."""
+    if not valor or not valor.strip():
+        return False, "Email es obligatorio."
+    valor = valor.strip().lower()
+    if len(valor) > 50:
+        return False, "Email no puede superar 50 caracteres."
+    if not re.match(r"^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$", valor):
+        return False, "Formato de email inválido."
+    return True, valor
 
-    except Exception as e:
-        print(f"Excepción en comunicación local con el OC300: {e}")
-        cached_omada_token = None
-        return False
+def validar_direccion(valor):
+    """Texto libre, 5-50 caracteres."""
+    if not valor or not valor.strip():
+        return False, "Dirección es obligatoria."
+    valor = valor.strip()
+    if len(valor) < 5 or len(valor) > 50:
+        return False, "Dirección debe tener entre 5 y 50 caracteres."
+    return True, valor
+
+def validar_mac(valor):
+    """Acepta formatos: AA:BB:CC:DD:EE:FF o AA-BB-CC-DD-EE-FF."""
+    if not valor:
+        return False, "MAC no proporcionada."
+    valor = valor.strip()
+    if re.match(r"^([0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}$", valor):
+        return True, valor
+    return False, f"Formato de MAC inválido: {valor}"
 
 # ==========================================
-# RUTAS DE LA APLICACIÓN FLASK
+# INTEGRACIÓN OMADA OC300 (API v2 con omadacId)
+# ==========================================
+
+def _reset_cache():
+    _cache["token"]     = None
+    _cache["site_id"]   = None
+    _cache["omadac_id"] = None
+
+def _get_session():
+    sess = requests.Session()
+    sess.verify = False
+    sess.headers.update({
+        "Content-Type": "application/json",
+        "Accept":       "application/json",
+    })
+    return sess
+
+def _login(session, base_url):
+    """Inicia sesión y devuelve el token. Actualiza el caché."""
+    url = f"{base_url}/api/v2/login"
+    payload = {"username": OMADA_USER, "password": OMADA_PASSWORD}
+    print(f"[Omada] LOGIN → {url}")
+    resp = session.post(url, json=payload, timeout=10)
+    if resp.status_code != 200:
+        print(f"[Omada] Login fallido (HTTP {resp.status_code}): {resp.text}")
+        return None
+    data = resp.json()
+    token = (data.get("result") or {}).get("token")
+    if not token:
+        print(f"[Omada] Token no encontrado en respuesta: {data}")
+        return None
+    _cache["token"] = token
+    session.headers.update({"Csrf-Token": token})
+    print(f"[Omada] Token obtenido: {token[:8]}...")
+    return token
+
+def _get_omadac_id(session, base_url):
+    """Obtiene el omadacId del controlador (necesario en API v2 del OC300)."""
+    if _cache["omadac_id"]:
+        return _cache["omadac_id"]
+    url = f"{base_url}/api/info"
+    resp = session.get(url, timeout=10)
+    if resp.status_code != 200:
+        print(f"[Omada] No se pudo obtener omadacId (HTTP {resp.status_code}): {resp.text}")
+        return None
+    data = resp.json()
+    omadac_id = (data.get("result") or {}).get("omadacId") or data.get("omadacId")
+    if not omadac_id:
+        print(f"[Omada] omadacId no encontrado en: {data}")
+        return None
+    _cache["omadac_id"] = omadac_id
+    print(f"[Omada] omadacId: {omadac_id}")
+    return omadac_id
+
+def _get_site_id(session, base_url, omadac_id):
+    """Busca el site_id por nombre del sitio."""
+    if _cache["site_id"]:
+        return _cache["site_id"]
+
+    # Intentamos primero con la ruta que incluye omadacId (OC300 firmware reciente)
+    urls_a_probar = [
+        f"{base_url}/{omadac_id}/api/v2/sites",
+        f"{base_url}/api/v2/sites",
+    ]
+    for url in urls_a_probar:
+        resp = session.get(url, timeout=10)
+        if resp.status_code != 200:
+            continue
+        data = resp.json()
+        result = data.get("result", {})
+        sites = result.get("data", result) if isinstance(result, dict) else result
+        if not isinstance(sites, list):
+            continue
+        for site in sites:
+            if site.get("name") == OMADA_SITE_NAME:
+                site_id = site.get("id")
+                _cache["site_id"] = site_id
+                print(f"[Omada] Site ID encontrado: {site_id} (nombre='{OMADA_SITE_NAME}')")
+                return site_id
+
+    print(f"[Omada] Sitio '{OMADA_SITE_NAME}' no encontrado.")
+    return None
+
+def _autorizar_mac(session, base_url, omadac_id, site_id, formatted_mac, duracion_min=1440):
+    """Envía el comando de autorización al OC300."""
+    # Ruta con omadacId (OC300 firmware actualizado)
+    urls_a_probar = [
+        f"{base_url}/{omadac_id}/api/v2/sites/{site_id}/cmd/authorizations",
+        f"{base_url}/api/v2/sites/{site_id}/cmd/authorizations",
+    ]
+    payload = {
+        "mac":      formatted_mac,
+        "action":   1,              # 1 = Autorizar
+        "duration": duracion_min,   # en minutos
+    }
+    for url in urls_a_probar:
+        print(f"[Omada] Autorizando MAC {formatted_mac} → {url}")
+        resp = session.post(url, json=payload, timeout=10)
+        print(f"[Omada] Respuesta (HTTP {resp.status_code}): {resp.text}")
+        if resp.status_code == 200:
+            result = resp.json()
+            if result.get("errorCode") == 0:
+                return True
+            # Sesión expirada
+            if result.get("errorCode") in [-1000, -1005, -1200]:
+                print("[Omada] Sesión expirada durante autorización.")
+                return None  # señal para reintentar
+    return False
+
+def autorizar_en_omada_local(client_mac, reintentar=True):
+    """
+    Flujo completo de autorización en el OC300 local.
+    Reintenta una vez si el token ha expirado.
+    """
+    global _cache
+
+    mac_ok, mac_info = validar_mac(client_mac)
+    if not mac_ok:
+        print(f"[Omada] {mac_info}")
+        return False
+
+    base_url      = OMADA_CONTROLLER_URL.rstrip('/')
+    formatted_mac = client_mac.replace(":", "-").replace(" ", "").upper()
+    session       = _get_session()
+
+    # 1. Login (usa caché si existe)
+    token = _cache["token"]
+    if token:
+        session.headers.update({"Csrf-Token": token})
+        print(f"[Omada] Usando token cacheado: {token[:8]}...")
+    else:
+        token = _login(session, base_url)
+        if not token:
+            return False
+
+    # 2. omadacId
+    omadac_id = _get_omadac_id(session, base_url)
+    if not omadac_id:
+        print("[Omada] omadacId no disponible; intentando sin él.")
+        omadac_id = ""  # fallback sin omadacId
+
+    # 3. Site ID
+    site_id = _get_site_id(session, base_url, omadac_id)
+    if not site_id:
+        _reset_cache()
+        return False
+
+    # 4. Autorización
+    resultado = _autorizar_mac(session, base_url, omadac_id, site_id, formatted_mac)
+
+    if resultado is None and reintentar:
+        # Token expiró → limpiar caché y reintentar una vez
+        print("[Omada] Reintentando con nuevo token...")
+        _reset_cache()
+        return autorizar_en_omada_local(client_mac, reintentar=False)
+
+    if resultado is False:
+        print(f"[Omada] Fallo al autorizar {formatted_mac}.")
+    _cache["token"] = _cache.get("token")  # mantener caché si fue exitoso
+    return resultado is True
+
+# ==========================================
+# RUTAS FLASK
 # ==========================================
 
 @app.route('/')
@@ -173,64 +278,89 @@ def serve_image(filename):
 
 @app.route('/registrar', methods=['POST'])
 def registrar_usuario():
-    nombre = request.form.get('nombre')
-    apellido = request.form.get('apellido')
-    telefono = request.form.get('telefono')
-    email = request.form.get('email')
-    direccion = request.form.get('direccion')
-    clientMac = request.form.get('clientMac')
-    apMac = request.form.get('apMac')
-    target = request.form.get('target')
-    
-    print(f"DEBUG - Todos los parámetros recibidos: {dict(request.form)}")
-    print(f"Procesando registro: nombre={nombre} {apellido}, MAC={clientMac}, AP_MAC={apMac}, target={target}")
+    # --- Lectura de parámetros ---
+    nombre   = request.form.get('nombre',   '').strip()
+    apellido = request.form.get('apellido', '').strip()
+    telefono = request.form.get('telefono', '').strip()
+    email    = request.form.get('email',    '').strip()
+    direccion= request.form.get('direccion','').strip()
+    clientMac= request.form.get('clientMac','').strip()
+    apMac    = request.form.get('apMac',   '').strip()
+    target   = request.form.get('target',  '').strip()
 
-    if not all([nombre, apellido, telefono, email, direccion]):
-        return "Faltan campos obligatorios", 400
+    print(f"[Registro] Parámetros recibidos: {dict(request.form)}")
 
+    # --- Validaciones ---
+    errores = []
+
+    ok, val = validar_nombre(nombre, "Nombre")
+    if ok: nombre = val
+    else:  errores.append(val)
+
+    ok, val = validar_nombre(apellido, "Apellido")
+    if ok: apellido = val
+    else:  errores.append(val)
+
+    ok, val = validar_telefono(telefono)
+    if ok: telefono = val
+    else:  errores.append(val)
+
+    ok, val = validar_email(email)
+    if ok: email = val
+    else:  errores.append(val)
+
+    ok, val = validar_direccion(direccion)
+    if ok: direccion = val
+    else:  errores.append(val)
+
+    if errores:
+        print(f"[Registro] Validación fallida: {errores}")
+        return jsonify({"error": " | ".join(errores)}), 400
+
+    # --- Persistencia en BD ---
     conn = get_db_connection()
     if not conn:
-        return "Error de conexión con la base de datos", 500
+        return jsonify({"error": "Error de conexión con la base de datos."}), 500
 
     try:
         with conn.cursor() as cursor:
             sql_cliente = """
-                INSERT INTO clientes (nombre, apellido, telefono, email, direccion) 
+                INSERT INTO clientes (nombre, apellido, telefono, email, direccion)
                 VALUES (%s, %s, %s, %s, %s)
             """
             cursor.execute(sql_cliente, (nombre, apellido, telefono, email, direccion))
             id_usuario_nuevo = cursor.lastrowid
-            
+
             sql_fecha = "INSERT INTO fecha_registro (id_usuario_fr, fecha_registro) VALUES (%s, NOW())"
             cursor.execute(sql_fecha, (id_usuario_nuevo,))
-            
+
         conn.close()
-        
-        # AUTORIZACIÓN EN OMADA (siempre que haya clientMac)
-        if clientMac:
-            mac_limpia = clientMac.replace("-", ":").strip().lower()
-            print(f"Autorizando dispositivo en Omada Local: MAC={mac_limpia}")
-            autorizacion_exitosa = autorizar_en_omada_local(mac_limpia)
-            
-            if autorizacion_exitosa:
-                print(f"¡Dispositivo {mac_limpia} autorizado exitosamente en Omada!")
-            else:
-                print(f"ADVERTENCIA: No se pudo autorizar {mac_limpia} en Omada vía API")
-        else:
-            print("Advertencia: No se recibió clientMac, no se puede autorizar automáticamente.")
-        
-        # REDIRECCIÓN AL USUARIO
-        redirect_to = target if (target and target.strip()) else "https://www.google.com"
-        print(f"Redireccionando usuario a: {redirect_to}")
-        return redirect(redirect_to)
-        
+        print(f"[Registro] Usuario #{id_usuario_nuevo} guardado: {nombre} {apellido} <{email}>")
+
     except Exception as e:
-        print(f"Error durante el flujo de registro: {e}")
-        if conn:
-            conn.close()
-        return "Error interno al procesar la solicitud", 500
+        print(f"[Registro] Error al guardar en BD: {e}")
+        conn.close()
+        return jsonify({"error": "Error interno al guardar el registro."}), 500
+
+    # --- Autorización en Omada ---
+    if clientMac:
+        mac_limpia = clientMac.replace("-", ":").strip().lower()
+        print(f"[Registro] Autorizando MAC: {mac_limpia}")
+        autorizado = autorizar_en_omada_local(mac_limpia)
+        if autorizado:
+            print(f"[Registro] ✔ Dispositivo {mac_limpia} con acceso a internet.")
+        else:
+            print(f"[Registro] ✘ No se pudo autorizar {mac_limpia} en Omada (registrado igual).")
+    else:
+        print("[Registro] Sin clientMac → autorización omitida.")
+
+    # --- Redirección final ---
+    redirect_to = target if target else "https://www.google.com"
+    print(f"[Registro] Redirigiendo a: {redirect_to}")
+    return redirect(redirect_to)
+
 
 if __name__ == '__main__':
-    print("Servidor Flask de Production Iniciado")
-    modo_debug = os.environ.get("FLASK_DEBUG", "True").lower() in ("true", "1")
-    app.run(host='0.0.0.0', port=5000, debug=modo_debug)
+    print("=== Portal Cautivo - Servidor Flask ===")
+    debug = os.environ.get("FLASK_DEBUG", "True").lower() in ("true", "1")
+    app.run(host='0.0.0.0', port=5000, debug=debug)
