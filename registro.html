@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -118,6 +119,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <div class="logo">
@@ -129,34 +131,34 @@
                 <label for="nombre">Nombre</label>
                 <input type="text" id="nombre" name="nombre" required maxlength="30">
             </div>
-            
+
             <div class="form-group">
                 <label for="apellido">Apellido</label>
                 <input type="text" id="apellido" name="apellido" required maxlength="30">
             </div>
-            
+
             <div class="form-group">
                 <label for="telefono">Número Telefónico</label>
                 <input type="tel" id="telefono" name="telefono" required maxlength="25">
             </div>
-            
+
             <div class="form-group">
                 <label for="email">Correo Electrónico</label>
                 <input type="email" id="email" name="email" required maxlength="50">
             </div>
-            
+
             <div class="form-group">
                 <label for="direccion">Dirección</label>
                 <input type="text" id="direccion" name="direccion" required maxlength="50">
             </div>
-            
+
             <input type="hidden" id="clientMac" name="clientMac">
             <input type="hidden" id="apMac" name="apMac">
             <input type="hidden" id="target" name="target">
-            
+
             <button type="submit">Registrarse y Conectar</button>
         </form>
-        
+
         <div id="message" class="message"></div>
     </div>
 
@@ -164,14 +166,14 @@
         // Al cargar la página, extraemos los parámetros que envía Omada por la URL
         window.addEventListener('DOMContentLoaded', () => {
             const urlParams = new URLSearchParams(window.location.search);
-            
+
             // Capturamos el redirectUrl original que manda el router
             const redirectUrl = urlParams.get('redirectUrl');
-            
+
             // Intenta obtener clientMac o clientmac, el que venga en la URL
             const clientMacValue = urlParams.get('clientMac') || urlParams.get('clientmac') || '';
             const apMacValue = urlParams.get('apMac') || urlParams.get('apmac') || '';
-            
+
             // Si hay redirectUrl, lo usamos como target; si no, buscamos el parámetro target
             const targetValue = redirectUrl || urlParams.get('target') || '';
 
@@ -187,4 +189,5 @@
         });
     </script>
 </body>
+
 </html>

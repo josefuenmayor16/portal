@@ -38,15 +38,15 @@ async function connectToDatabase() {
 app.post('/api/registro', async (req, res) => {
     try {
         const { nombre, apellido, telefono, email, direccion } = req.body;
-        
+
         // Validar que todos los campos estén presentes
         if (!nombre || !apellido || !telefono || !email || !direccion) {
             return res.status(400).json({ error: 'Todos los campos son obligatorios' });
         }
-        
+
         // Crear pool de conexión
         const pool = await sql.connect(config);
-        
+
         // Insertar el nuevo usuario en la tabla clientes
         const result = await pool.request()
             .input('nombre', sql.VarChar(30), nombre)
@@ -59,10 +59,10 @@ app.post('/api/registro', async (req, res) => {
                 VALUES (@nombre, @apellido, @telefono, @email, @direccion);
                 SELECT SCOPE_IDENTITY() as id_usuario;
             `);
-        
+
         // Obtener el ID del usuario insertado
         const idUsuario = result.recordset[0].id_usuario;
-        
+
         // Insertar el registro de fecha
         await pool.request()
             .input('id_usuario_fr', sql.Int, idUsuario)
@@ -70,14 +70,14 @@ app.post('/api/registro', async (req, res) => {
                 INSERT INTO dbo.fecha_registro (id_usuario_fr, fecha_registro)
                 VALUES (@id_usuario_fr, GETDATE());
             `);
-        
+
         await pool.close();
-        
-        res.status(201).json({ 
+
+        res.status(201).json({
             message: 'Usuario registrado exitosamente',
-            id_usuario: idUsuario 
+            id_usuario: idUsuario
         });
-        
+
     } catch (err) {
         console.error('Error al registrar usuario:', err);
         res.status(500).json({ error: 'Error al registrar usuario en la base de datos' });
