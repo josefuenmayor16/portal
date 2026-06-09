@@ -175,9 +175,11 @@ def registrar_usuario():
     email = request.form.get('email')
     direccion = request.form.get('direccion')
     clientMac = request.form.get('clientMac')
+    apMac = request.form.get('apMac')
     target = request.form.get('target')
     
-    print(f"Procesando registro: nombre={nombre} {apellido}, MAC={clientMac}")
+    print(f"DEBUG - Todos los parámetros recibidos: {dict(request.form)}")
+    print(f"Procesando registro: nombre={nombre} {apellido}, MAC={clientMac}, AP_MAC={apMac}, target={target}")
 
     if not all([nombre, apellido, telefono, email, direccion]):
         return "Faltan campos obligatorios", 400
@@ -200,35 +202,46 @@ def registrar_usuario():
             
         conn.close()
         
-        # Ejecutar la autorización directo en el controlador
-        if clientMac:
-            autorizar_en_omada_local(clientMac)
+        # RUTA ÓPTIMA PARA AUTORIZACIÓN OMADA
+        if clientMac and apMac:
+            # MÉTODO PRIMARIO: Redirección local al controlador (recomendado por TP-Link)
+            html_auth = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Conectando...</title>
+                <meta charset="UTF-8">
+            </head>
+            <body>
+                <p>Autorizando acceso a Internet, por favor espere...</p>
+                
+                <form id="omadaAuthForm" action="http://172.172.1.30:8088/portal/auth" method="get">
+                    <input type="hidden" name="clientMac" value="{clientMac}">
+                    <input type="hidden" name="apMac" value="{apMac}">
+                </form>
+
+                <script>
+                    window.onload = function() {{
+                        document.getElementById('omadaAuthForm').submit();
+                    }};
+                </script>
+            </body>
+            </html>
+            """
+            print(f"Redirección al controlador Omada para conectar a PRUEBAS SAAS: MAC={clientMac}")
+            return html_auth, 200
+        elif clientMac:
+            # MÉTODO SECUNDARIO: API Local (fallback si no hay apMac)
+            mac_limpia = clientMac.replace("-", ":").strip().lower()
+            print(f"Usando API Local para autorizar MAC: {mac_limpia}")
+            autorizar_en_omada_local(mac_limpia)
+            
+            redirect_to = target if (target and target.strip()) else "https://www.google.com"
+            return redirect(redirect_to)
         else:
-            print("Advertencia: No se recibió clientMac.")
-        
-        redirect_to = target if (target and target.strip()) else "https://www.google.com"
-        
-        return f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Conectando...</title>
-            <meta http-equiv="refresh" content="3;url={redirect_to}">
-        </head>
-        <body style="text-align: center; font-family: Arial, sans-serif; padding-top: 60px; color: #333; background-color: #f9f9f9;">
-            <div style="max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                <h2 style="color: #2e7d32;">¡Registro Exitoso!</h2>
-                <p>Tus datos han sido procesados de manera correcta.</p>
-                <p style="color: #666;">Conectando a la red Wi-Fi, por favor espera un momento...</p>
-            </div>
-            <script>
-                setTimeout(function() {{
-                    window.location.href = "{redirect_to}";
-                }}, 3000);
-            </script>
-        </body>
-        </html>
-        """, 200
+            print("Advertencia: No se recibió clientMac, no se puede autorizar automáticamente.")
+            redirect_to = target if (target and target.strip()) else "https://www.google.com"
+            return redirect(redirect_to)
         
     except Exception as e:
         print(f"Error durante el flujo de registro: {e}")
