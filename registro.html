@@ -379,31 +379,37 @@
 
         // =============================================
         // 1. CAPTURA DE PARÁMETROS DEL PORTAL CAUTIVO
+        //    Omada envía: clientMac, apMac, redirectUrl, etc.
         // =============================================
-        const urlParams = new URLSearchParams(window.location.search);
+        var urlParams = new URLSearchParams(window.location.search);
 
-        const clientMacValue = (
+        // Capturar MAC del cliente (Omada puede enviarla en distintos formatos)
+        var clientMacValue = (
             urlParams.get('clientMac') ||
             urlParams.get('clientmac') ||
-            urlParams.get('client_mac') || ''
+            urlParams.get('client_mac') ||
+            urlParams.get('mac') || ''
         ).trim();
 
-        const apMacValue = (
+        // Capturar MAC del AP
+        var apMacValue = (
             urlParams.get('apMac') ||
             urlParams.get('apmac') ||
             urlParams.get('ap_mac') || ''
         ).trim();
 
-        const redirectUrl = urlParams.get('redirectUrl') || urlParams.get('redirect_url') || '';
-        const targetValue = (redirectUrl || urlParams.get('target') || '').trim();
+        // Capturar URL de redirección original
+        var redirectUrl = urlParams.get('redirectUrl') || urlParams.get('redirect_url') || urlParams.get('url') || '';
+        var targetValue = (redirectUrl || urlParams.get('target') || '').trim();
 
+        // Inyectar los valores capturados en los campos ocultos del formulario
         document.getElementById('clientMac').value = clientMacValue;
         document.getElementById('apMac').value     = apMacValue;
         document.getElementById('target').value    = targetValue;
 
         // Mostrar info del dispositivo si hay MAC disponible
         if (clientMacValue) {
-            const info = document.getElementById('device-info');
+            var info = document.getElementById('device-info');
             info.innerHTML =
                 '📡 Dispositivo detectado: <strong>' + clientMacValue.toUpperCase() + '</strong>' +
                 (apMacValue ? ' &nbsp;| AP: <strong>' + apMacValue.toUpperCase() + '</strong>' : '');
@@ -413,51 +419,52 @@
         console.log('[Portal] MAC cliente:', clientMacValue || '(no detectada)');
         console.log('[Portal] MAC AP:',      apMacValue     || '(no detectada)');
         console.log('[Portal] Destino:',     targetValue    || 'https://www.google.com');
+        console.log('[Portal] Todos los parámetros URL:', window.location.search);
 
         // =============================================
         // 2. VALIDACIONES EN EL CLIENTE
         // =============================================
-        const rules = {
-            nombre:   {
-                test: v => /^[A-Za-záéíóúÁÉÍÓÚàèìòùñÑ\s'\-]{2,30}$/.test(v.trim()),
-                msg:  'Solo letras, 2-30 caracteres.'
+        var rules = {
+            nombre: {
+                test: function(v) { return /^[A-Za-záéíóúÁÉÍÓÚàèìòùñÑ\s'\-]{2,30}$/.test(v.trim()); },
+                msg: 'Solo letras, 2-30 caracteres.'
             },
             apellido: {
-                test: v => /^[A-Za-záéíóúÁÉÍÓÚàèìòùñÑ\s'\-]{2,30}$/.test(v.trim()),
-                msg:  'Solo letras, 2-30 caracteres.'
+                test: function(v) { return /^[A-Za-záéíóúÁÉÍÓÚàèìòùñÑ\s'\-]{2,30}$/.test(v.trim()); },
+                msg: 'Solo letras, 2-30 caracteres.'
             },
             telefono: {
-                test: v => /^\+?[\d\s\-\(\)]{7,20}$/.test(v.trim()),
-                msg:  'Teléfono inválido (7-20 dígitos, puede incluir +, - o paréntesis).'
+                test: function(v) { return /^\+?[\d\s\-\(\)]{7,20}$/.test(v.trim()); },
+                msg: 'Teléfono inválido (7-20 dígitos, puede incluir +, - o paréntesis).'
             },
             email: {
-                test: v => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim()) && v.length <= 50,
-                msg:  'Correo electrónico inválido.'
+                test: function(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim()) && v.length <= 50; },
+                msg: 'Correo electrónico inválido.'
             },
             direccion: {
-                test: v => v.trim().length >= 5 && v.trim().length <= 50,
-                msg:  'Dirección debe tener entre 5 y 50 caracteres.'
-            },
+                test: function(v) { return v.trim().length >= 5 && v.trim().length <= 50; },
+                msg: 'Dirección debe tener entre 5 y 50 caracteres.'
+            }
         };
 
         function showFieldError(id, msg) {
-            const inp = document.getElementById(id);
-            const err = document.getElementById(id + '-error');
+            var inp = document.getElementById(id);
+            var err = document.getElementById(id + '-error');
             inp.classList.add('invalid');
             inp.classList.remove('valid');
             if (err) { err.querySelector('span').textContent = msg; err.classList.add('visible'); }
         }
 
         function clearFieldError(id) {
-            const inp = document.getElementById(id);
-            const err = document.getElementById(id + '-error');
+            var inp = document.getElementById(id);
+            var err = document.getElementById(id + '-error');
             inp.classList.remove('invalid');
             inp.classList.add('valid');
-            if (err) err.classList.remove('visible');
+            if (err) { err.classList.remove('visible'); }
         }
 
         function showGlobalAlert(type, msg) {
-            const el = document.getElementById('global-alert');
+            var el = document.getElementById('global-alert');
             el.className = 'alert visible ' + type;
             document.getElementById('global-alert-text').textContent = msg;
         }
@@ -466,12 +473,14 @@
             document.getElementById('global-alert').className = 'alert';
         }
 
-        // Validación en tiempo real (blur)
-        Object.keys(rules).forEach(function (id) {
-            const inp = document.getElementById(id);
+        // Validación en tiempo real (al perder el foco de cada campo)
+        var fieldIds = ['nombre', 'apellido', 'telefono', 'email', 'direccion'];
+        fieldIds.forEach(function (id) {
+            var inp = document.getElementById(id);
             if (!inp) return;
+            var rule = rules[id];
+
             inp.addEventListener('blur', function () {
-                const rule = rules[id];
                 if (!inp.value.trim()) {
                     showFieldError(id, 'Este campo es obligatorio.');
                 } else if (!rule.test(inp.value)) {
@@ -480,6 +489,7 @@
                     clearFieldError(id);
                 }
             });
+
             inp.addEventListener('input', function () {
                 if (inp.classList.contains('invalid') && rule.test(inp.value)) {
                     clearFieldError(id);
@@ -488,20 +498,24 @@
         });
 
         // =============================================
-        // 3. ENVÍO DEL FORMULARIO
+        // 3. ENVÍO DEL FORMULARIO (POST NATIVO)
+        //    Usa form.submit() real para que el navegador
+        //    del portal cautivo siga el redirect 302
+        //    naturalmente. NO usar fetch() en portales cautivos.
         // =============================================
-        const form = document.getElementById('registration-form');
-        const btn  = document.getElementById('btn-submit');
+        var form = document.getElementById('registration-form');
+        var btn  = document.getElementById('btn-submit');
 
         form.addEventListener('submit', function (e) {
+            // Prevenir envío para validar primero
             e.preventDefault();
             hideGlobalAlert();
 
-            let valid = true;
+            var valid = true;
 
-            Object.keys(rules).forEach(function (id) {
-                const inp  = document.getElementById(id);
-                const rule = rules[id];
+            fieldIds.forEach(function (id) {
+                var inp  = document.getElementById(id);
+                var rule = rules[id];
                 if (!inp.value.trim()) {
                     showFieldError(id, 'Este campo es obligatorio.');
                     valid = false;
@@ -515,47 +529,21 @@
 
             if (!valid) {
                 showGlobalAlert('error', 'Por favor corrige los errores antes de continuar.');
+                // Hacer scroll al primer campo con error
+                var firstInvalid = form.querySelector('.invalid');
+                if (firstInvalid) { firstInvalid.focus(); }
                 return;
             }
 
-            // Estado cargando
+            // Mostrar estado de carga
             btn.classList.add('loading');
             btn.disabled = true;
+            showGlobalAlert('success', 'Enviando registro… Por favor espera.');
 
-            // Enviar datos
-            const formData = new FormData(form);
-            fetch(form.action, {
-                method: 'POST',
-                body:   formData,
-                redirect: 'manual',   // Manejaremos la redirección manualmente
-            })
-            .then(function (response) {
-                if (response.ok || response.type === 'opaqueredirect') {
-                    // Redirigir al destino configurado o a la URL de respuesta
-                    const dest = document.getElementById('target').value || 'https://www.google.com';
-                    showGlobalAlert('success', '¡Registro exitoso! Conectando a internet…');
-                    setTimeout(function () {
-                        window.location.href = response.url && response.url !== '' ? response.url : dest;
-                    }, 1200);
-                } else {
-                    return response.text().then(function (txt) {
-                        throw new Error(txt || 'Error del servidor (' + response.status + ').');
-                    });
-                }
-            })
-            .catch(function (err) {
-                // Si el servidor respondió con un redirect 302, el navegador lo siguió automáticamente
-                // y fetch lanzará un error de red (CORS / opaque). Lo tratamos como éxito.
-                if (err.message && err.message.toLowerCase().includes('failed to fetch')) {
-                    showGlobalAlert('success', '¡Registro enviado! Redirigiendo…');
-                    const dest = document.getElementById('target').value || 'https://www.google.com';
-                    setTimeout(function () { window.location.href = dest; }, 1500);
-                } else {
-                    showGlobalAlert('error', err.message || 'Error al conectar. Intenta nuevamente.');
-                    btn.classList.remove('loading');
-                    btn.disabled = false;
-                }
-            });
+            // Enviar el formulario de forma NATIVA (POST estándar).
+            // El servidor Flask hará redirect(302) → el navegador lo seguirá automáticamente.
+            // Esto es CRÍTICO para portales cautivos en celulares.
+            form.submit();
         });
 
     })();
