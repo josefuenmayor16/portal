@@ -221,33 +221,10 @@ def registrar_usuario():
         
         # 4. REDIRECCIÓN AL CONTROLADOR OMADA LOCAL PARA AUTORIZACIÓN
         if clientMac and apMac:
-            # Devolver HTML con formulario auto-enviado por JavaScript (recomendado por TP-Link)
-            html_auth = f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Conectando...</title>
-                <meta charset="UTF-8">
-            </head>
-            <body>
-                <p>Autorizando acceso a Internet, por favor espere...</p>
-                
-                <form id="omadaAuthForm" action="http://172.172.1.30:8088/portal/auth" method="get">
-                    <input type="hidden" name="clientMac" value="{clientMac}">
-                    <input type="hidden" name="apMac" value="{apMac}">
-                </form>
-
-                <script>
-                    // Forzar el envío automático del formulario apenas cargue la página
-                    window.onload = function() {{
-                        document.getElementById('omadaAuthForm').submit();
-                    }};
-                </script>
-            </body>
-            </html>
-            """
-            print(f"Enviando formulario de autorización al controlador Omada para MAC: {clientMac}")
-            return html_auth, 200
+            # Redirigir al endpoint de autorización del controlador Omada local
+            omada_url = f"http://172.172.1.30:8088/portal/auth?clientMac={clientMac}&apMac={apMac}"
+            print(f"Redireccionando al controlador Omada para autorización: {omada_url}")
+            return redirect(omada_url)
         elif target and target.strip():
             # Fallback: redirección al destino original si no hay MAC
             print(f"Redireccionando usuario al destino original: {target}")
