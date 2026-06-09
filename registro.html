@@ -1,47 +1,19 @@
 <!DOCTYPE html>
 <html lang="es">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Portal de registro para acceso a la red Wi-Fi de SAAS Tropical.">
-    <title>Portal de Acceso – SAAS Tropical</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <title>Registro de Usuarios</title>
     <style>
-        *,
-        *::before,
-        *::after {
+        * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
 
-        :root {
-            --primary: #1a73e8;
-            --primary-dark: #1557b0;
-            --primary-glow: rgba(26, 115, 232, 0.35);
-            --success: #1e8449;
-            --success-bg: #d5f5e3;
-            --error: #c0392b;
-            --error-bg: #fdecea;
-            --text-main: #1a1a2e;
-            --text-muted: #5a6270;
-            --border: #dde3f0;
-            --border-focus: #1a73e8;
-            --bg-page: linear-gradient(135deg, #0d6efd 0%, #00c6ff 100%);
-            --bg-card: #ffffff;
-            --input-bg: #f5f7fb;
-            --radius-card: 24px;
-            --radius-input: 12px;
-            --shadow-card: 0 24px 64px rgba(0, 0, 0, 0.18), 0 4px 16px rgba(0, 0, 0, 0.08);
-            --transition: all 0.25s ease;
-        }
-
         body {
-            font-family: 'Outfit', 'Segoe UI', sans-serif;
-            background: var(--bg-page);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #4CAF50;
             min-height: 100vh;
             display: flex;
             justify-content: center;
@@ -49,619 +21,170 @@
             padding: 20px;
         }
 
-        /* ---- CARD ---- */
-        .card {
-            background: var(--bg-card);
-            border-radius: var(--radius-card);
-            box-shadow: var(--shadow-card);
-            padding: 44px 40px;
-            max-width: 480px;
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 500px;
             width: 100%;
-            position: relative;
-            overflow: hidden;
         }
 
-        .card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 5px;
-            background: linear-gradient(90deg, #1a73e8, #00c6ff);
-        }
-
-        /* ---- LOGO ---- */
         .logo {
             text-align: center;
-            margin-bottom: 24px;
+            margin-bottom: 30px;
         }
 
         .logo img {
-            max-width: 180px;
+            max-width: 100%;
             height: auto;
-        }
-
-        /* ---- ENCABEZADO ---- */
-        .wifi-badge {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            background: linear-gradient(135deg, #e8f0fe, #c2d9ff);
-            border-radius: 50px;
-            padding: 8px 18px;
-            margin: 0 auto 18px;
-            max-width: fit-content;
-        }
-
-        .wifi-badge svg {
-            width: 18px;
-            height: 18px;
-            fill: var(--primary);
-        }
-
-        .wifi-badge span {
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--primary);
-            letter-spacing: 0.02em;
         }
 
         h1 {
             text-align: center;
-            color: var(--text-main);
-            font-size: 26px;
-            font-weight: 700;
-            margin-bottom: 6px;
-            letter-spacing: -0.02em;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 28px;
         }
 
-        .subtitle {
-            text-align: center;
-            color: var(--text-muted);
-            font-size: 14px;
-            margin-bottom: 32px;
-        }
-
-        /* ---- FORMULARIO ---- */
         .form-group {
-            margin-bottom: 18px;
-            position: relative;
+            margin-bottom: 20px;
         }
 
         label {
             display: block;
-            margin-bottom: 6px;
-            color: var(--text-main);
-            font-weight: 500;
-            font-size: 13.5px;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 600;
+            font-size: 14px;
         }
 
-        label .required {
-            color: #e74c3c;
-            margin-left: 2px;
-        }
-
-        .input-wrapper {
-            position: relative;
-        }
-
-        .input-wrapper .icon {
-            position: absolute;
-            left: 13px;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 17px;
-            height: 17px;
-            fill: #9aa3b0;
-            pointer-events: none;
-            transition: fill 0.2s;
-        }
-
-        input[type="text"],
-        input[type="tel"],
-        input[type="email"] {
+        input {
             width: 100%;
-            padding: 12px 14px 12px 38px;
-            background: var(--input-bg);
-            border: 2px solid var(--border);
-            border-radius: var(--radius-input);
-            font-size: 14.5px;
-            font-family: inherit;
-            color: var(--text-main);
-            transition: var(--transition);
-            outline: none;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
         }
 
         input:focus {
-            border-color: var(--border-focus);
-            background: #fff;
-            box-shadow: 0 0 0 4px var(--primary-glow);
+            outline: none;
+            border-color: #1976D2;
         }
 
-        input:focus+.icon,
-        .input-wrapper:focus-within .icon {
-            fill: var(--primary);
-        }
-
-        input.invalid {
-            border-color: var(--error);
-            background: #fff8f8;
-        }
-
-        input.valid {
-            border-color: #27ae60;
-            background: #f6fff9;
-        }
-
-        .field-error {
-            font-size: 12px;
-            color: var(--error);
-            margin-top: 5px;
-            display: none;
-            align-items: center;
-            gap: 4px;
-        }
-
-        .field-error.visible {
-            display: flex;
-        }
-
-        /* ---- BOTÓN ---- */
-        .btn-submit {
+        button {
             width: 100%;
-            padding: 15px;
-            background: linear-gradient(135deg, var(--primary), #00c6ff);
-            color: #fff;
+            padding: 14px;
+            background: #1976D2;
+            color: white;
             border: none;
-            border-radius: var(--radius-input);
+            border-radius: 8px;
             font-size: 16px;
-            font-family: inherit;
-            font-weight: 700;
+            font-weight: 600;
             cursor: pointer;
-            letter-spacing: 0.02em;
-            transition: var(--transition);
-            margin-top: 8px;
-            position: relative;
-            overflow: hidden;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 10px;
         }
 
-        .btn-submit:hover:not(:disabled) {
+        button:hover {
             transform: translateY(-2px);
-            box-shadow: 0 10px 28px var(--primary-glow);
+            box-shadow: 0 10px 20px rgba(25, 118, 210, 0.4);
+            background: #1565C0;
         }
 
-        .btn-submit:active:not(:disabled) {
+        button:active {
             transform: translateY(0);
         }
 
-        .btn-submit:disabled {
-            opacity: 0.7;
-            cursor: not-allowed;
-        }
-
-        .btn-submit .spinner {
-            display: none;
-            width: 18px;
-            height: 18px;
-            border: 2.5px solid rgba(255, 255, 255, 0.4);
-            border-top-color: #fff;
-            border-radius: 50%;
-            animation: spin 0.7s linear infinite;
-            margin: 0 auto;
-        }
-
-        .btn-submit.loading .btn-text {
-            display: none;
-        }
-
-        .btn-submit.loading .spinner {
-            display: block;
-        }
-
-        @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
-        }
-
-        /* ---- ALERTA GLOBAL ---- */
-        .alert {
-            padding: 13px 16px;
-            border-radius: var(--radius-input);
-            margin-top: 18px;
-            font-size: 14px;
-            display: none;
-            align-items: flex-start;
-            gap: 10px;
-        }
-
-        .alert.visible {
-            display: flex;
-        }
-
-        .alert svg {
-            width: 18px;
-            height: 18px;
-            flex-shrink: 0;
-            margin-top: 1px;
-        }
-
-        .alert.success {
-            background: var(--success-bg);
-            color: var(--success);
-        }
-
-        .alert.error {
-            background: var(--error-bg);
-            color: var(--error);
-        }
-
-        /* ---- INFO DISPOSITIVO ---- */
-        .device-info {
-            display: none;
-            background: #f0f4ff;
-            border: 1px solid #c2d9ff;
-            border-radius: 10px;
-            padding: 10px 14px;
-            margin-bottom: 18px;
-            font-size: 12.5px;
-            color: #3455a0;
-        }
-
-        .device-info.visible {
-            display: block;
-        }
-
-        .device-info strong {
-            font-weight: 600;
-        }
-
-        /* ---- PIE ---- */
-        .footer-note {
+        .message {
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 20px;
             text-align: center;
-            font-size: 11.5px;
-            color: #aab0be;
-            margin-top: 24px;
+            display: none;
         }
 
-        /* ---- RESPONSIVE ---- */
-        @media (max-width: 480px) {
-            .card {
-                padding: 32px 22px;
-            }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
 
-            h1 {
-                font-size: 22px;
-            }
+        .error {
+            background: #f8d7da;
+            color: #d8878f;
+            border: 1px solid #f5c6cb;
         }
     </style>
 </head>
-
 <body>
-    <div class="card">
-        <!-- Logo -->
+    <div class="container">
         <div class="logo">
-            <img src="img/SAAS.png" alt="SAAS Tropical Logo">
+            <img src="img/SAAS.png">
         </div>
-
-        <!-- Badge Wi-Fi -->
-        <div class="wifi-badge" id="wifi-badge">
-            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path
-                    d="M1 9l2 2c5.523-5.523 14.477-5.523 20 0l2-2C19.07 3.07 4.93 3.07 1 9zm8 8l3 3 3-3c-1.657-1.657-4.343-1.657-6 0zm-4-4l2 2c2.761-2.761 7.239-2.761 10 0l2-2C15.686 9.686 8.314 9.686 5 13z" />
-            </svg>
-            <span>Registro para acceso Wi-Fi</span>
-        </div>
-
-        <h1>Conéctate a Internet</h1>
-        <p class="subtitle">Completa el formulario para activar tu acceso a la red.</p>
-
-        <!-- Info del dispositivo detectado -->
-        <div class="device-info" id="device-info"></div>
-
-        <form id="registration-form" action="https://portal-production-a74c.up.railway.app/registrar" method="POST"
-            novalidate>
-
-            <!-- Nombre -->
+        <h1>Registro de Usuarios</h1>
+        <form action="https://portal-production-a74c.up.railway.app/registrar" method="POST">
             <div class="form-group">
-                <label for="nombre">Nombre <span class="required">*</span></label>
-                <div class="input-wrapper">
-                    <input type="text" id="nombre" name="nombre" required maxlength="30" placeholder="Ej: Juan"
-                        autocomplete="given-name">
-                    <svg class="icon" viewBox="0 0 24 24">
-                        <path
-                            d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z" />
-                    </svg>
-                </div>
-                <div class="field-error" id="nombre-error">
-                    <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
-                        <path
-                            d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
-                    </svg>
-                    <span></span>
-                </div>
+                <label for="nombre">Nombre</label>
+                <input type="text" id="nombre" name="nombre" required maxlength="30">
             </div>
-
-            <!-- Apellido -->
+            
             <div class="form-group">
-                <label for="apellido">Apellido <span class="required">*</span></label>
-                <div class="input-wrapper">
-                    <input type="text" id="apellido" name="apellido" required maxlength="30" placeholder="Ej: Pérez"
-                        autocomplete="family-name">
-                    <svg class="icon" viewBox="0 0 24 24">
-                        <path
-                            d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z" />
-                    </svg>
-                </div>
-                <div class="field-error" id="apellido-error">
-                    <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
-                        <path
-                            d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
-                    </svg>
-                    <span></span>
-                </div>
+                <label for="apellido">Apellido</label>
+                <input type="text" id="apellido" name="apellido" required maxlength="30">
             </div>
-
-            <!-- Teléfono -->
+            
             <div class="form-group">
-                <label for="telefono">Número Telefónico <span class="required">*</span></label>
-                <div class="input-wrapper">
-                    <input type="tel" id="telefono" name="telefono" required maxlength="20"
-                        placeholder="Ej: +58 414 123 4567" autocomplete="tel">
-                    <svg class="icon" viewBox="0 0 24 24">
-                        <path
-                            d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z" />
-                    </svg>
-                </div>
-                <div class="field-error" id="telefono-error">
-                    <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
-                        <path
-                            d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
-                    </svg>
-                    <span></span>
-                </div>
+                <label for="telefono">Número Telefónico</label>
+                <input type="tel" id="telefono" name="telefono" required maxlength="25">
             </div>
-
-            <!-- Email -->
+            
             <div class="form-group">
-                <label for="email">Correo Electrónico <span class="required">*</span></label>
-                <div class="input-wrapper">
-                    <input type="email" id="email" name="email" required maxlength="50"
-                        placeholder="Ej: usuario@correo.com" autocomplete="email">
-                    <svg class="icon" viewBox="0 0 24 24">
-                        <path
-                            d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4-8 5-8-5V6l8 5 8-5v2z" />
-                    </svg>
-                </div>
-                <div class="field-error" id="email-error">
-                    <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
-                        <path
-                            d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
-                    </svg>
-                    <span></span>
-                </div>
+                <label for="email">Correo Electrónico</label>
+                <input type="email" id="email" name="email" required maxlength="50">
             </div>
-
-            <!-- Dirección -->
+            
             <div class="form-group">
-                <label for="direccion">Dirección <span class="required">*</span></label>
-                <div class="input-wrapper">
-                    <input type="text" id="direccion" name="direccion" required maxlength="50"
-                        placeholder="Ej: Av. Principal, Local 5" autocomplete="street-address">
-                    <svg class="icon" viewBox="0 0 24 24">
-                        <path
-                            d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
-                    </svg>
-                </div>
-                <div class="field-error" id="direccion-error">
-                    <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
-                        <path
-                            d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
-                    </svg>
-                    <span></span>
-                </div>
+                <label for="direccion">Dirección</label>
+                <input type="text" id="direccion" name="direccion" required maxlength="50">
             </div>
-
-            <!-- Campos ocultos del portal cautivo -->
+            
             <input type="hidden" id="clientMac" name="clientMac">
             <input type="hidden" id="apMac" name="apMac">
             <input type="hidden" id="target" name="target">
-
-            <button type="submit" class="btn-submit" id="btn-submit">
-                <span class="btn-text">🔓 Registrarse y Conectar</span>
-                <div class="spinner"></div>
-            </button>
+            
+            <button type="submit">Registrarse y Conectar</button>
         </form>
-
-        <!-- Alerta global -->
-        <div class="alert" id="global-alert" role="alert">
-            <svg viewBox="0 0 24 24" fill="currentColor">
-                <path
-                    d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
-            </svg>
-            <span id="global-alert-text"></span>
-        </div>
-
-        <p class="footer-note">Al registrarte aceptas las condiciones de uso de la red. © SAAS Tropical</p>
+        
+        <div id="message" class="message"></div>
     </div>
 
     <script>
-        (function () {
-            "use strict";
+        // Al cargar la página, extraemos los parámetros que envía Omada por la URL
+        window.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            
+            // Capturamos el redirectUrl original que manda el router
+            const redirectUrl = urlParams.get('redirectUrl');
+            
+            // Intenta obtener clientMac o clientmac, el que venga en la URL
+            const clientMacValue = urlParams.get('clientMac') || urlParams.get('clientmac') || '';
+            const apMacValue = urlParams.get('apMac') || urlParams.get('apmac') || '';
+            
+            // Si hay redirectUrl, lo usamos como target; si no, buscamos el parámetro target
+            const targetValue = redirectUrl || urlParams.get('target') || '';
 
-            // =============================================
-            // 1. CAPTURA DE PARÁMETROS DEL PORTAL CAUTIVO
-            //    Omada envía: clientMac, apMac, redirectUrl, etc.
-            // =============================================
-            var urlParams = new URLSearchParams(window.location.search);
-
-            // Capturar MAC del cliente (Omada puede enviarla en distintos formatos)
-            var clientMacValue = (
-                urlParams.get('clientMac') ||
-                urlParams.get('clientmac') ||
-                urlParams.get('client_mac') ||
-                urlParams.get('mac') || ''
-            ).trim();
-
-            // Capturar MAC del AP
-            var apMacValue = (
-                urlParams.get('apMac') ||
-                urlParams.get('apmac') ||
-                urlParams.get('ap_mac') || ''
-            ).trim();
-
-            // Capturar URL de redirección original
-            var redirectUrl = urlParams.get('redirectUrl') || urlParams.get('redirect_url') || urlParams.get('url') || '';
-            var targetValue = (redirectUrl || urlParams.get('target') || '').trim();
-
-            // Inyectar los valores capturados en los campos ocultos del formulario
             document.getElementById('clientMac').value = clientMacValue;
             document.getElementById('apMac').value = apMacValue;
             document.getElementById('target').value = targetValue;
 
-            // Mostrar info del dispositivo si hay MAC disponible
-            if (clientMacValue) {
-                var info = document.getElementById('device-info');
-                info.innerHTML =
-                    '📡 Dispositivo detectado: <strong>' + clientMacValue.toUpperCase() + '</strong>' +
-                    (apMacValue ? ' &nbsp;| AP: <strong>' + apMacValue.toUpperCase() + '</strong>' : '');
-                info.classList.add('visible');
+            // Imprime en la consola del navegador del teléfono para auditoría visual básica
+            console.log("MAC del cliente capturada con éxito:", clientMacValue);
+            if (targetValue) {
+                console.log("Destino dinámico configurado: " + targetValue);
             }
-
-            console.log('[Portal] MAC cliente:', clientMacValue || '(no detectada)');
-            console.log('[Portal] MAC AP:', apMacValue || '(no detectada)');
-            console.log('[Portal] Destino:', targetValue || 'https://www.google.com');
-            console.log('[Portal] Todos los parámetros URL:', window.location.search);
-
-            // =============================================
-            // 2. VALIDACIONES EN EL CLIENTE
-            // =============================================
-            var rules = {
-                nombre: {
-                    test: function (v) { return /^[A-Za-záéíóúÁÉÍÓÚàèìòùñÑ\s'\-]{2,30}$/.test(v.trim()); },
-                    msg: 'Solo letras, 2-30 caracteres.'
-                },
-                apellido: {
-                    test: function (v) { return /^[A-Za-záéíóúÁÉÍÓÚàèìòùñÑ\s'\-]{2,30}$/.test(v.trim()); },
-                    msg: 'Solo letras, 2-30 caracteres.'
-                },
-                telefono: {
-                    test: function (v) { return /^\+?[\d\s\-\(\)]{7,20}$/.test(v.trim()); },
-                    msg: 'Teléfono inválido (7-20 dígitos, puede incluir +, - o paréntesis).'
-                },
-                email: {
-                    test: function (v) { return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim()) && v.length <= 50; },
-                    msg: 'Correo electrónico inválido.'
-                },
-                direccion: {
-                    test: function (v) { return v.trim().length >= 5 && v.trim().length <= 50; },
-                    msg: 'Dirección debe tener entre 5 y 50 caracteres.'
-                }
-            };
-
-            function showFieldError(id, msg) {
-                var inp = document.getElementById(id);
-                var err = document.getElementById(id + '-error');
-                inp.classList.add('invalid');
-                inp.classList.remove('valid');
-                if (err) { err.querySelector('span').textContent = msg; err.classList.add('visible'); }
-            }
-
-            function clearFieldError(id) {
-                var inp = document.getElementById(id);
-                var err = document.getElementById(id + '-error');
-                inp.classList.remove('invalid');
-                inp.classList.add('valid');
-                if (err) { err.classList.remove('visible'); }
-            }
-
-            function showGlobalAlert(type, msg) {
-                var el = document.getElementById('global-alert');
-                el.className = 'alert visible ' + type;
-                document.getElementById('global-alert-text').textContent = msg;
-            }
-
-            function hideGlobalAlert() {
-                document.getElementById('global-alert').className = 'alert';
-            }
-
-            // Validación en tiempo real (al perder el foco de cada campo)
-            var fieldIds = ['nombre', 'apellido', 'telefono', 'email', 'direccion'];
-            fieldIds.forEach(function (id) {
-                var inp = document.getElementById(id);
-                if (!inp) return;
-                var rule = rules[id];
-
-                inp.addEventListener('blur', function () {
-                    if (!inp.value.trim()) {
-                        showFieldError(id, 'Este campo es obligatorio.');
-                    } else if (!rule.test(inp.value)) {
-                        showFieldError(id, rule.msg);
-                    } else {
-                        clearFieldError(id);
-                    }
-                });
-
-                inp.addEventListener('input', function () {
-                    if (inp.classList.contains('invalid') && rule.test(inp.value)) {
-                        clearFieldError(id);
-                    }
-                });
-            });
-
-            // =============================================
-            // 3. ENVÍO DEL FORMULARIO (POST NATIVO)
-            //    Usa form.submit() real para que el navegador
-            //    del portal cautivo siga el redirect 302
-            //    naturalmente. NO usar fetch() en portales cautivos.
-            // =============================================
-            var form = document.getElementById('registration-form');
-            var btn = document.getElementById('btn-submit');
-
-            form.addEventListener('submit', function (e) {
-                // Prevenir envío para validar primero
-                e.preventDefault();
-                hideGlobalAlert();
-
-                var valid = true;
-
-                fieldIds.forEach(function (id) {
-                    var inp = document.getElementById(id);
-                    var rule = rules[id];
-                    if (!inp.value.trim()) {
-                        showFieldError(id, 'Este campo es obligatorio.');
-                        valid = false;
-                    } else if (!rule.test(inp.value)) {
-                        showFieldError(id, rule.msg);
-                        valid = false;
-                    } else {
-                        clearFieldError(id);
-                    }
-                });
-
-                if (!valid) {
-                    showGlobalAlert('error', 'Por favor corrige los errores antes de continuar.');
-                    // Hacer scroll al primer campo con error
-                    var firstInvalid = form.querySelector('.invalid');
-                    if (firstInvalid) { firstInvalid.focus(); }
-                    return;
-                }
-
-                // Mostrar estado de carga
-                btn.classList.add('loading');
-                btn.disabled = true;
-                showGlobalAlert('success', 'Enviando registro… Por favor espera.');
-
-                // Enviar el formulario de forma NATIVA (POST estándar).
-                // El servidor Flask hará redirect(302) → el navegador lo seguirá automáticamente.
-                // Esto es CRÍTICO para portales cautivos en celulares.
-                form.submit();
-            });
-
-        })();
+        });
     </script>
 </body>
-
 </html>
