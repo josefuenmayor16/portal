@@ -1,9 +1,20 @@
 import os
 import re
+import sys
 import pymysql
 import requests
 import urllib3
 from flask import Flask, request, redirect, send_from_directory
+from dotenv import load_dotenv
+
+# Cargar variables de entorno locales desde .env si existe
+load_dotenv()
+
+# Configurar codificación de consola en Windows para evitar UnicodeEncodeError con caracteres especiales
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8')
 
 # Deshabilitar advertencias de certificados auto-firmados del OC300
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -13,7 +24,7 @@ app = Flask(__name__)
 # ==========================================
 # CONFIGURACIÓN OMADA OC300 LOCAL
 # ==========================================
-OMADA_CONTROLLER_URL = os.environ.get("OMADA_CONTROLLER_URL", "https://172.172.1.30:8043")
+OMADA_CONTROLLER_URL = os.environ.get("OMADA_CONTROLLER_URL", "https://192.168.0.101:443")
 OMADA_USER           = os.environ.get("OMADA_USER",           "lcastillo@cobeca.com")
 OMADA_PASSWORD       = os.environ.get("OMADA_PASSWORD",       "Fu5@2026*.")
 OMADA_SITE_NAME      = os.environ.get("OMADA_SITE_NAME",      "SAAS TROPICAL")
