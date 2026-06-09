@@ -1,19 +1,23 @@
 import os
 import pymysql
 import requests
-from flask import Flask, request, redirect, jsonify, send_from_directory
+import urllib3
+from flask import Flask, request, redirect, send_from_directory
+
+# Deshabilitar advertencias de certificados auto-firmados del OC300
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
 
-# Railway leerá los textos planos configurados en tu panel de variables
-OMADA_API_URL = os.environ.get("OMADA_API_URL", "https://use1-omada-cloud.tplinkcloud.com/api/v1")
-OMADA_LOGIN_URL = os.environ.get("OMADA_LOGIN_URL", "https://use1-api-omada-controller-connector.tplinkcloud.com/api/v1/login")
+# Configuración obligatoria apuntando directamente a tu controlador OC300 local
+OMADA_CONTROLLER_URL = os.environ.get("OMADA_CONTROLLER_URL", "https://172.172.1.30:8043")
 OMADA_USER = os.environ.get("OMADA_USER", "lcastillo@cobeca.com")
 OMADA_PASSWORD = os.environ.get("OMADA_PASSWORD", "Fu5@2026*.")
 OMADA_SITE_NAME = os.environ.get("OMADA_SITE_NAME", "SAAS TROPICAL")
 
-# Cache global del token para evitar regeneración continua
+# Cache global para optimizar el performance
 cached_omada_token = None
+cached_site_id = None
 
 def get_db_connection():
     try:
@@ -35,130 +39,120 @@ def get_db_connection():
         print(f"Error conectando a MySQL interno: {e}")
         return None
 
-def autorizar_en_omada_cloud(client_mac):
-    global cached_omada_token
+def autorizar_en_omada_local(client_mac):
+    global cached_omada_token, cached_site_id
     
-    if not OMADA_PASSWORD:
-        print("Error crítico: La variable OMADA_PASSWORD no está definida en Railway.")
-        return False
-        
-    try:
-        session = requests.Session()
-        session.headers.update({
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-        })
+    base_url = OMADA_CONTROLLER_URL.rstrip('/')
+    formatted_mac = client_mac.replace(":", "-").replace(" ", "").upper()
+    
+    session = requests.Session()
+    # Ignorar la verificación SSL ya que el OC300 local suele usar un certificado auto-firmado
+    session.verify = False 
+    
+    session.headers.update({
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    })
 
-        # Usa el token cacheado si existe
+    try:
+        # --- PASO 1: LOGIN Y OBTENCIÓN DEL TOKEN ---
         if cached_omada_token:
-            print(f"Usando token cacheado: {cached_omada_token[:8]}...")
             token = cached_omada_token
+            print(f"Usando token local cacheado: {token[:8]}...")
         else:
-            base_url = OMADA_API_URL.split('/api')[0].rstrip('/')
-            login_url = f"{base_url}/api/v1/login"
-            
+            login_url = f"{base_url}/api/v2/login"  # Forzamos API v2 compatible con OC300 actualizados
             login_payload = {
-                "name": OMADA_USER,
+                "username": OMADA_USER,
                 "password": OMADA_PASSWORD
             }
             
-            print(f"Iniciando sesión en el Conector Cloud: {login_url}")
-            login_response = session.post(login_url, json=login_payload, timeout=10)
+            print(f"Iniciando sesión en OC300 Local: {login_url}")
+            login_response = session.post(login_url, json=login_payload, timeout=8)
             
             if login_response.status_code != 200:
-                print(f"Error de autenticación inicial en Omada Cloud (Status: {login_response.status_code})")
+                print(f"Fallo de login en OC300 (Status: {login_response.status_code}). Revisar credenciales.")
                 return False
-
+                
             res_json = login_response.json()
-            
-            # CORRECCIÓN 1: Se eliminó 'token = None' que saboteaba el flujo original
             token = None
-        
-            # Extracción del token del JSON de respuesta
             if res_json and isinstance(res_json, dict):
                 if "result" in res_json and isinstance(res_json["result"], dict):
                     token = res_json["result"].get("token")
-                else:
-                    token = res_json.get("token") or res_json.get("accessToken")
-
-            # Intento alternativo desde los Headers
+            
             if not token:
-                token = login_response.headers.get("Comntoken") or login_response.headers.get("Token") or login_response.headers.get("X-Auth-Token")
-
-            if not token:
-                print(f"No se pudo localizar el token en ninguna capa. Payload recibido: {res_json}")
+                print(f"No se pudo extraer el token del OC300. Respuesta: {res_json}")
                 return False
-
-            print(f"¡Token de seguridad recuperado con éxito!: {token[:8]}...")
+                
             cached_omada_token = token
-        
-        # Seteamos las credenciales en la sesión
-        session.headers.update({
-            "Authorization": f"Bearer {token}",
-            "X-Auth-Token": token,
-            "Comntoken": token
-        })
+            print(f"¡Token local generado con éxito!: {token[:8]}...")
 
+        # Inyectar el token en la cabecera estándar de Omada local
+        session.headers.update({"Csrf-Token": token})
+        # Los controladores físicos manejan cookies de sesión tras el login
+        
         # --- PASO 2: OBTENER EL SITE ID ---
-        clean_api_url = OMADA_API_URL.rstrip('/')
-        sites_url = f"{clean_api_url}/sites"
-        
-        print(f"Consultando identificador de sitio en: {sites_url}")
-        sites_response = session.get(sites_url, timeout=10)
-        
-        if sites_response.status_code != 200:
-            print(f"Error al obtener los sitios ({sites_response.status_code}): {sites_response.text}")
-            return False
-
-        sites_data = sites_response.json()
-        sites_list = []
-        if isinstance(sites_data.get("result"), dict):
-            sites_list = sites_data["result"].get("data", [])
-        elif isinstance(sites_data.get("result"), list):
-            sites_list = sites_data["result"]
+        if cached_site_id:
+            site_id = cached_site_id
         else:
-            sites_list = sites_data.get("data", [])
-
-        site_id = None
-        for site in sites_list:
-            if site.get("name") == OMADA_SITE_NAME:
-                site_id = site.get("id")
-                break
-
-        if not site_id:
-            print(f"No se localizó el sitio '{OMADA_SITE_NAME}'. Revisar variable OMADA_SITE_NAME.")
-            return False
+            sites_url = f"{base_url}/api/v2/sites"
+            sites_response = session.get(sites_url, timeout=8)
+            
+            if sites_response.status_code != 200:
+                print(f"Error recuperando sitios del OC300: {sites_response.text}")
+                # Resetear cache del token por si caducó
+                cached_omada_token = None
+                return False
+                
+            sites_data = sites_response.json()
+            sites_list = []
+            if isinstance(sites_data.get("result"), dict):
+                sites_list = sites_data["result"].get("data", [])
+            else:
+                sites_list = sites_data.get("result", [])
+                
+            site_id = None
+            for site in sites_list:
+                if site.get("name") == OMADA_SITE_NAME:
+                    site_id = site.get("id")
+                    break
+                    
+            if not site_id:
+                print(f"No se encontró el sitio '{OMADA_SITE_NAME}' en el OC300.")
+                return False
+                
+            cached_site_id = site_id
+            print(f"Identificado Site ID Local: {site_id}")
 
         # --- PASO 3: ENVIAR COMANDO DE AUTORIZACIÓN ---
-        auth_url = f"{clean_api_url}/sites/{site_id}/cmd/authorizations"
-        
-        # CORRECCIÓN 2: Formato estricto para Omada Cloud (Guiones y Mayúsculas: XX-XX-XX-XX-XX-XX)
-        formatted_mac = client_mac.replace(":", "-").replace(" ", "").upper()
-        
+        auth_url = f"{base_url}/api/v2/sites/{site_id}/cmd/authorizations"
         auth_payload = {
             "mac": formatted_mac,
-            "action": 1,          # 1 = Autorizar / Mover a CONNECTED
-            "duration": 1440      # Tiempo de acceso: 24 horas (en minutos)
+            "action": 1,          # 1 = Autorizar acceso
+            "duration": 1440      # 24 horas en minutos
         }
-
-        print(f"Enviando orden de liberación a Omada Cloud para la MAC [{formatted_mac}]")
-        auth_response = session.post(auth_url, json=auth_payload, timeout=10)
+        
+        print(f"Liberando internet en OC300 para la MAC [{formatted_mac}]")
+        auth_response = session.post(auth_url, json=auth_payload, timeout=8)
         
         if auth_response.status_code == 200:
             auth_result = auth_response.json()
-            if auth_result.get("errorCode") == 0 or auth_result.get("result") == "success":
-                print(f"¡ÉXITO TOTAL! Dispositivo {formatted_mac} autorizado. Estado cambiado a CONNECTED.")
+            if auth_result.get("errorCode") == 0:
+                print(f"¡ÉXITO LOCAL! Dispositivo {formatted_mac} autorizado en el OC300.")
                 return True
             else:
-                print(f"El controlador Omada rechazó la mutación de estado: {auth_result}")
+                print(f"El OC300 denegó la autorización: {auth_result}")
+                # Si el error es de sesión expirada, limpiamos el caché para reintentar en la próxima
+                if auth_result.get("errorCode") in [-1000, -1005, -1200]:
+                    cached_omada_token = None
                 return False
         else:
-            print(f"Error en comando de autorización ({auth_response.status_code}): {auth_response.text}")
+            print(f"Error HTTP en comando de autorización ({auth_response.status_code}): {auth_response.text}")
+            cached_omada_token = None
             return False
 
     except Exception as e:
-        print(f"Excepción general en el módulo de Omada Cloud: {e}")
+        print(f"Excepción en comunicación local con el OC300: {e}")
+        cached_omada_token = None
         return False
 
 # ==========================================
@@ -181,8 +175,7 @@ def registrar_usuario():
     email = request.form.get('email')
     direccion = request.form.get('direccion')
     clientMac = request.form.get('clientMac')
-    apMac = request.form.get('apMac')
-    target = request.form.get('target')  # Captura la URL original de Omada
+    target = request.form.get('target')
     
     print(f"Procesando registro: nombre={nombre} {apellido}, MAC={clientMac}")
 
@@ -195,7 +188,6 @@ def registrar_usuario():
 
     try:
         with conn.cursor() as cursor:
-            # Guardar en MySQL
             sql_cliente = """
                 INSERT INTO clientes (nombre, apellido, telefono, email, direccion) 
                 VALUES (%s, %s, %s, %s, %s)
@@ -208,16 +200,12 @@ def registrar_usuario():
             
         conn.close()
         
-        # 4. SOLICITAR ACCESO A INTERNET
+        # Ejecutar la autorización directo en el controlador
         if clientMac:
-            # Enviamos la MAC tal como viene; la función se encarga de transformarla al formato correcto
-            autorizar_en_omada_cloud(clientMac)
+            autorizar_en_omada_local(clientMac)
         else:
-            print("Advertencia: No se recibió clientMac del formulario, no se puede liberar internet.")
+            print("Advertencia: No se recibió clientMac.")
         
-        # 5. RETORNO AMIGABLE PARA PORTALES CAUTIVOS
-        # En lugar de un redirect directo (302) que a veces falla en navegadores integrados,
-        # devolvemos un HTML de éxito que redirige automáticamente tras 3 segundos.
         redirect_to = target if (target and target.strip()) else "https://www.google.com"
         
         return f"""
@@ -227,10 +215,12 @@ def registrar_usuario():
             <title>Conectando...</title>
             <meta http-equiv="refresh" content="3;url={redirect_to}">
         </head>
-        <body style="text-align: center; font-family: Arial, sans-serif; padding-top: 60px; color: #333;">
-            <h2>¡Registro Exitoso!</h2>
-            <p>Tus datos han sido procesados de manera correcta.</p>
-            <p>Conectando a la red Wi-Fi, por favor espera un momento...</p>
+        <body style="text-align: center; font-family: Arial, sans-serif; padding-top: 60px; color: #333; background-color: #f9f9f9;">
+            <div style="max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <h2 style="color: #2e7d32;">¡Registro Exitoso!</h2>
+                <p>Tus datos han sido procesados de manera correcta.</p>
+                <p style="color: #666;">Conectando a la red Wi-Fi, por favor espera un momento...</p>
+            </div>
             <script>
                 setTimeout(function() {{
                     window.location.href = "{redirect_to}";
