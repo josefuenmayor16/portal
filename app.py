@@ -219,16 +219,50 @@ def registrar_usuario():
             
         conn.close()
         
-        # 4. SOLICITAR ACCESO A INTERNET A TRAVÉS DE LA MAC
-        if clientMac:
-            # Limpiar el formato de la MAC (ej: de 78-20-51... a 78:20:51...)
+        # 4. RUTA ÓPTIMA PARA AUTORIZACIÓN OMADA
+        if clientMac and apMac:
+            # MÉTODO PRIMARIO: Redirección local al controlador (más rápido)
+            html_auth = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Conectando...</title>
+                <meta charset="UTF-8">
+            </head>
+            <body>
+                <p>Autorizando acceso a Internet, por favor espere...</p>
+                
+                <form id="omadaAuthForm" action="http://172.172.1.30:8088/portal/auth" method="get">
+                    <input type="hidden" name="clientMac" value="{clientMac}">
+                    <input type="hidden" name="apMac" value="{apMac}">
+                </form>
+
+                <script>
+                    window.onload = function() {{
+                        document.getElementById('omadaAuthForm').submit();
+                    }};
+                </script>
+            </body>
+            </html>
+            """
+            print(f"Ruta óptima: Redirección local al controlador Omada para MAC: {clientMac}")
+            return html_auth, 200
+        elif clientMac:
+            # MÉTODO SECUNDARIO: API Cloud (fallback si no hay apMac)
             mac_limpia = clientMac.replace("-", ":").strip().lower()
-            print(f"Enviando orden de liberación remota para la MAC: {mac_limpia}")
+            print(f"Ruta alternativa: Usando API Cloud para la MAC: {mac_limpia}")
             autorizar_en_omada_cloud(mac_limpia)
+            
+            if target and target.strip():
+                print(f"Redireccionando usuario al destino original: {target}")
+                return redirect(target)
+            else:
+                print("No se detectó parámetro target. Redireccionando a Google por defecto.")
+                return redirect("https://www.google.com")
         else:
             print("Advertencia: No se recibió clientMac del formulario, no se puede liberar internet automáticamente.")
         
-        # 5. REDIRECCIÓN EXITOSA DINÁMICA
+        # 5. REDIRECCIÓN EXITOSA DINÁMICA (si no se autorizó por MAC)
         if target and target.strip():
             print(f"Redireccionando usuario al destino original: {target}")
             return redirect(target)
