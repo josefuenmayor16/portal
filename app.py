@@ -25,40 +25,44 @@ def get_db_connection():
         print(f"Error conectando a la base de datos: {e}")
         return None
 
-def authorize_omada_client(client_mac, ap_mac):
+# Caché global para el token de Omada
+omada_token_cache = {"token": None}
+
+def authorize_omada_client(client_mac, ap_mac, retry=True):
     """
     Se conecta al controlador Omada para autorizar a un cliente.
+    Optimizado con caché de token para evitar login en cada registro.
     """
     omada_url = os.getenv('OMADA_URL', 'https://172.172.1.30:8043')
     username = os.getenv('OMADA_USERNAME', 'admin')
     password = os.getenv('OMADA_PASSWORD', 'admin')
-    # site_id = os.getenv('OMADA_SITE_ID', 'Default')
     
     session = requests.Session()
     
     try:
-        # 1. Login
-        login_url = f"{omada_url}/api/v2/login"
-        login_data = {"username": username, "password": password}
+        # Si no hay token en caché, hacemos login
+        if not omada_token_cache["token"]:
+            login_url = f"{omada_url}/api/v2/login"
+            login_data = {"username": username, "password": password}
+            
+            print(f"Intentando login en Omada: {login_url}")
+            response = session.post(login_url, json=login_data, verify=False, timeout=30)
+            response.raise_for_status()
+            
+            login_result = response.json()
+            token = login_result.get('result', {}).get('token')
+            
+            if not token:
+                print("Error: No se pudo obtener el token de Omada.")
+                return False
+            
+            omada_token_cache["token"] = token
         
-        print(f"Intentando login en Omada: {login_url}")
-        # timeout=30 previene el ConnectTimeout. verify=False previene errores SSL
-        response = session.post(login_url, json=login_data, verify=False, timeout=30)
-        response.raise_for_status()
-        
-        login_result = response.json()
-        token = login_result.get('result', {}).get('token')
-        
-        if not token:
-            print("Error: No se pudo obtener el token de Omada.")
-            return False
-        
-        # Headers para autorización CSRF
+        # Autorizar el cliente con el token (en caché o recién obtenido)
+        token = omada_token_cache["token"]
         headers = {'Csrf-Token': token}
         
-        # 2. Autorizar el cliente (endpoint de Hotspot)
-        # Ajusta esta URL a la ruta correcta de autorización de hotspot en tu versión.
-        auth_url = f"{omada_url}/api/v2/hotspot/login" # Placeholder para el endpoint real
+        auth_url = f"{omada_url}/api/v2/hotspot/login" # Ajustar según API real
         auth_data = {
             "clientMac": client_mac,
             "apMac": ap_mac
@@ -66,6 +70,14 @@ def authorize_omada_client(client_mac, ap_mac):
         
         print(f"Autorizando cliente en Omada: {client_mac}")
         auth_resp = session.post(auth_url, json=auth_data, headers=headers, verify=False, timeout=30)
+        
+        # Si el token expiró o es inválido, Omada suele devolver un 401 o 403, 
+        # o un JSON con código de error. Verificamos si falló por autenticación.
+        if auth_resp.status_code in (401, 403) and retry:
+            print("Token expirado o inválido, reintentando login...")
+            omada_token_cache["token"] = None
+            return authorize_omada_client(client_mac, ap_mac, retry=False)
+            
         auth_resp.raise_for_status()
         
         print("Cliente autorizado exitosamente en Omada.")
@@ -76,6 +88,10 @@ def authorize_omada_client(client_mac, ap_mac):
         return False
     except requests.exceptions.RequestException as e:
         print(f"Error de red/API al conectar con Omada Controller: {e}")
+        # Si hubo error de red, podríamos borrar el token por si el server se reinició
+        if retry:
+            omada_token_cache["token"] = None
+            return authorize_omada_client(client_mac, ap_mac, retry=False)
         return False
     except Exception as e:
         print(f"Error inesperado al conectar con Omada: {e}")
