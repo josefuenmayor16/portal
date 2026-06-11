@@ -1,4 +1,6 @@
 Flask==3.0.0
-pypyodbc
+pypyodbc==1.0.37
 cryptography==42.0.5
 requests==2.31.0
+PyMySQL==1.1.1
+urllib3==2.3.1
