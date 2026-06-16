@@ -16,8 +16,9 @@ OMADA_USER = os.environ.get("OMADA_USER", "lcastillo@cobeca.com")
 OMADA_PASSWORD = os.environ.get("OMADA_PASSWORD", "Fu5@2026*.")
 OMADA_SITE_NAME = os.environ.get("OMADA_SITE_NAME", "SAAS TROPICAL")
 
-# Cache global del token para evitar regeneración
+# Cache global para sesión Omada y evitar bloqueos por inicios de sesión concurrentes
 cached_omada_token = None
+cached_omada_cookies = None
 
 def get_db_connection():
     try:
@@ -40,8 +41,8 @@ def get_db_connection():
         print(f"Error conectando a MySQL interno: {e}")
         return None
 
-def autorizar_en_omada_cloud(client_mac):
-    global cached_omada_token
+def autorizar_en_omada_cloud(client_mac, is_retry=False):
+    global cached_omada_token, cached_omada_cookies
     
     if not OMADA_PASSWORD:
         print("Error crítico: La variable OMADA_PASSWORD no está definida en Railway.")
@@ -55,11 +56,11 @@ def autorizar_en_omada_cloud(client_mac):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
         })
 
-        # 🎯 USAR TOKEN CACHEADO SI EXISTE
-        # usa el token casheado si existe
-        if cached_omada_token:
+        # 🎯 USAR TOKEN Y COOKIES CACHEADOS SI EXISTEN
+        if cached_omada_token and cached_omada_cookies and not is_retry:
             print(f"Usando token cacheado: {cached_omada_token[:8]}...")
             token = cached_omada_token
+            session.cookies.update(cached_omada_cookies)
         else:
             # Extraemos la raíz limpia del servidor desde OMADA_API_URL
             base_url = OMADA_API_URL.split('/api')[0].rstrip('/')
@@ -101,15 +102,13 @@ def autorizar_en_omada_cloud(client_mac):
 
             print(f"¡Token de seguridad recuperado con éxito!: {token[:8]}...")
             
-            # 🎯 GUARDAR TOKEN EN CACHE GLOBAL
-            # guardar token en cache global
+            # 🎯 GUARDAR TOKEN Y COOKIES EN CACHE GLOBAL
             cached_omada_token = token
+            cached_omada_cookies = session.cookies.get_dict()
         
-        # Inyectamos el token en todos los formatos de Header que exige Omada
+        # Inyectamos el token en la cabecera OBLIGATORIA Csrf-Token que exige Envoy/Omada
         session.headers.update({
-            "Authorization": f"Bearer {token}",
-            "X-Auth-Token": token,
-            "Comntoken": token
+            "Csrf-Token": token
         })
 
         # --- PASO 2: OBTENER EL SITE ID ---
@@ -159,9 +158,14 @@ def autorizar_en_omada_cloud(client_mac):
         
         if auth_response.status_code == 200:
             auth_result = auth_response.json()
-            if auth_result.get("errorCode") == 0 or auth_result.get("result") == "success":
+            error_code = auth_result.get("errorCode")
+            
+            if error_code == 0 or auth_result.get("result") == "success":
                 print(f"¡ÉXITO TOTAL! Dispositivo {formatted_mac} autorizado. Estado cambiado a CONNECTED.")
                 return True
+            elif error_code == -1200 and not is_retry:
+                print("Error -1200: Sesión expirada o proxy rechazado. Reintentando inicio de sesión...")
+                return autorizar_en_omada_cloud(client_mac, is_retry=True)
             else:
                 print(f"El controlador Omada rechazó la mutación de estado: {auth_result}")
                 return False
