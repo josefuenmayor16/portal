@@ -78,14 +78,25 @@ def autorizar_en_omada_cloud(client_mac, is_retry=False):
             login_response = session.post(login_url, json=login_payload, timeout=10)
             
             if login_response.status_code != 200:
-                print(f"Error de autenticación inicial en Omada Cloud (Status: {login_response.status_code})")
+                print(f"Error HTTP de autenticación en Omada (Status: {login_response.status_code})")
                 return False
 
-            res_json = login_response.json()
+            try:
+                res_json = login_response.json()
+            except ValueError:
+                print(f"La respuesta no es JSON válido: {login_response.text}")
+                return False
+
+            # 🎯 VALIDACIÓN DE ERRORES INTERNOS DE OMADA (ej: -1200)
+            if res_json.get("errorCode") != 0 and res_json.get("errorCode") is not None:
+                print(f"Omada rechazó el inicio de sesión. ErrorCode: {res_json.get('errorCode')}")
+                print(f"Mensaje del servidor: {res_json.get('msg', 'Sin mensaje')}")
+                print("⚠ NOTA: Si usas 'controller-connector.tplinkcloud.com', no puedes enviar usuario/clave locales. Debes apuntar a la IP/Dominio directo del Controlador.")
+                return False
+
             token = None
         
             # 🎯 EXTRACCIÓN AVANZADA MULTI-CAPA DEL TOKEN
-            # extracción avanzada multi-capa del token
             if res_json and isinstance(res_json, dict):
                 # Caso 1: Estructura estándar Omada Cloud (result -> token)
                 if "result" in res_json and isinstance(res_json["result"], dict):
@@ -150,6 +161,7 @@ def autorizar_en_omada_cloud(client_mac, is_retry=False):
         # --- PASO 3: ENVIAR COMANDO DE AUTORIZACIÓN (LIBERACIÓN DE MAC) ---
         auth_url = f"{clean_api_url}/sites/{site_id}/cmd/authorizations"
         
+        # 🎯 OPTIMIZACIÓN LOCALIDAD DE MAC
         # Normalizamos la MAC al formato estricto que requiere Omada (Guiones y Mayúsculas)
         formatted_mac = client_mac.replace(":", "-").upper()
         
