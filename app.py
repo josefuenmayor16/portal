@@ -56,22 +56,25 @@ def autorizar_en_omada_cloud(client_mac, is_retry=False):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
         })
 
-        # 🎯 USAR TOKEN Y COOKIES CACHEADOS SI EXISTEN
         if cached_omada_token and cached_omada_cookies and not is_retry:
             print(f"Usando token cacheado: {cached_omada_token[:8]}...")
             token = cached_omada_token
             session.cookies.update(cached_omada_cookies)
         else:
-            # Extraemos la raíz limpia del servidor desde OMADA_API_URL
-            base_url = OMADA_API_URL.split('/api')[0].rstrip('/')
-            login_url = f"{base_url}/api/v1/login"
+            # 🎯 USAR URL DE LOGIN DIRECTA O INFERIRLA DE OMADA_API_URL
+            # Esto evita romper la URL y preserva el omadacId necesario en la nube
+            login_url = os.environ.get("OMADA_LOGIN_URL")
+            if not login_url or login_url == "https://use1-api-omada-controller-connector.tplinkcloud.com/api/v1/login":
+                # Si no se pasó una explícita válida, la inferimos de la API_URL
+                clean_api = OMADA_API_URL.rstrip('/')
+                login_url = f"{clean_api}/login"
             
             login_payload = {
                 "name": OMADA_USER,
                 "password": OMADA_PASSWORD
             }
             
-            print(f"Iniciando sesión en el Conector Cloud: {login_url}")
+            print(f"Iniciando sesión en el Controlador Omada: {login_url}")
             login_response = session.post(login_url, json=login_payload, timeout=10)
             
             if login_response.status_code != 200:
@@ -93,7 +96,7 @@ def autorizar_en_omada_cloud(client_mac, is_retry=False):
 
             # Caso 3: El token viene inyectado en los Headers de la respuesta HTTP
             if not token:
-                token = login_response.headers.get("Comntoken") or login_response.headers.get("Token") or login_response.headers.get("X-Auth-Token")
+                token = login_response.headers.get("Csrf-Token") or login_response.headers.get("Comntoken") or login_response.headers.get("Token") or login_response.headers.get("X-Auth-Token")
 
             if not token:
                 print(f"No se pudo localizar el token en ninguna capa. Payload recibido: {res_json}")
@@ -104,7 +107,10 @@ def autorizar_en_omada_cloud(client_mac, is_retry=False):
             
             # 🎯 GUARDAR TOKEN Y COOKIES EN CACHE GLOBAL
             cached_omada_token = token
+            # Guardamos explícitamente el cookie TPOMADA_SESSIONID si existe
             cached_omada_cookies = session.cookies.get_dict()
+            if not cached_omada_cookies:
+                print("Advertencia: No se detectaron cookies de sesión en la respuesta de login.")
         
         # Inyectamos el token en la cabecera OBLIGATORIA Csrf-Token que exige Envoy/Omada
         session.headers.update({
