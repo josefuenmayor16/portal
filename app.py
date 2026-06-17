@@ -5,9 +5,8 @@ from flask import Flask, request, redirect, send_from_directory
 
 app = Flask(__name__)
 
-# ==========================================
+
 # CONFIGURACIÓN DE OMADA CLOUD (PRODUCCIÓN)
-# ==========================================
 
 # Railway leerá los textos planos configurados en tu panel de variables
 OMADA_API_URL = os.environ.get("OMADA_API_URL", "https://use1-omada-cloud.tplinkcloud.com/api/v1")
@@ -24,7 +23,6 @@ def get_db_connection():
     try:
         password = os.environ.get('DB_PASSWORD')
         if password:
-            password = password.strip()  # Elimina espacios accidentales
             password = password.strip()
             
         conn = pymysql.connect(
@@ -61,7 +59,7 @@ def autorizar_en_omada_cloud(client_mac, is_retry=False):
             token = cached_omada_token
             session.cookies.update(cached_omada_cookies)
         else:
-            # 🎯 USAR URL DE LOGIN DIRECTA O INFERIRLA DE OMADA_API_URL
+            # USAR URL DE LOGIN DIRECTA O INFERIRLA DE OMADA_API_URL
             # Esto evita romper la URL y preserva el omadacId necesario en la nube
             login_url = os.environ.get("OMADA_LOGIN_URL")
             if not login_url or login_url == "https://use1-api-omada-controller-connector.tplinkcloud.com/api/v1/login":
@@ -87,7 +85,7 @@ def autorizar_en_omada_cloud(client_mac, is_retry=False):
                 print(f"La respuesta no es JSON válido: {login_response.text}")
                 return False
 
-            # 🎯 VALIDACIÓN DE ERRORES INTERNOS DE OMADA (ej: -1200)
+            # VALIDACIÓN DE ERRORES INTERNOS DE OMADA (ej: -1200)
             if res_json.get("errorCode") != 0 and res_json.get("errorCode") is not None:
                 print(f"Omada rechazó el inicio de sesión. ErrorCode: {res_json.get('errorCode')}")
                 print(f"Mensaje del servidor: {res_json.get('msg', 'Sin mensaje')}")
@@ -96,7 +94,7 @@ def autorizar_en_omada_cloud(client_mac, is_retry=False):
 
             token = None
         
-            # 🎯 EXTRACCIÓN AVANZADA MULTI-CAPA DEL TOKEN
+            # EXTRACCIÓN AVANZADA MULTI-CAPA DEL TOKEN
             if res_json and isinstance(res_json, dict):
                 # Caso 1: Estructura estándar Omada Cloud (result -> token)
                 if "result" in res_json and isinstance(res_json["result"], dict):
@@ -116,7 +114,7 @@ def autorizar_en_omada_cloud(client_mac, is_retry=False):
 
             print(f"¡Token de seguridad recuperado con éxito!: {token[:8]}...")
             
-            # 🎯 GUARDAR TOKEN Y COOKIES EN CACHE GLOBAL
+            # GUARDAR TOKEN Y COOKIES EN CACHE GLOBAL
             cached_omada_token = token
             # Guardamos explícitamente el cookie TPOMADA_SESSIONID si existe
             cached_omada_cookies = session.cookies.get_dict()
@@ -161,7 +159,7 @@ def autorizar_en_omada_cloud(client_mac, is_retry=False):
         # --- PASO 3: ENVIAR COMANDO DE AUTORIZACIÓN (LIBERACIÓN DE MAC) ---
         auth_url = f"{clean_api_url}/sites/{site_id}/cmd/authorizations"
         
-        # 🎯 OPTIMIZACIÓN LOCALIDAD DE MAC
+        # OPTIMIZACIÓN LOCALIDAD DE MAC
         # Normalizamos la MAC al formato estricto que requiere Omada (Guiones y Mayúsculas)
         formatted_mac = client_mac.replace(":", "-").upper()
         
@@ -195,9 +193,7 @@ def autorizar_en_omada_cloud(client_mac, is_retry=False):
         print(f"Excepción general en el módulo de Omada Cloud: {e}")
         return False
 
-# ==========================================
 # RUTAS DE LA APLICACIÓN FLASK
-# ==========================================
 
 @app.route('/')
 def index():
@@ -217,7 +213,6 @@ def registrar_usuario():
     direccion = request.form.get('direccion')
     clientMac = request.form.get('clientMac')
     apMac = request.form.get('apMac')
-    target = request.form.get('target')  # 🎯 Capturamos la URL destino original de Omada
     target = request.form.get('target')  # Capturamos la URL destino original de Omada
     
     print(f"Procesando registro: nombre={nombre} {apellido}, MAC={clientMac}")
